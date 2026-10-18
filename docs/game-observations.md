@@ -39,6 +39,13 @@ Characters: same colors incl. black (Level 25). Shot counts seen: 1 to 50.
 - Verified on all 344 frames of 3 recordings via tools/desktop (same code as the app): characters and numbers correct in every spot-check; popups and map detected.
 - Board calibration waits for a still board and an empty belt. Limitation: if reading starts mid-level, the grid can be wrong until the next level or a retry.
 
+## Auto-play status (v0.3)
+- Start/Pause/STOP on the floating panel (top of screen). Taps only queue (4) and waiting-slot (5) characters.
+- Planner v1 (rule, not learned): send the character whose colour has the most "exposed" edge cubes (first cube in a row/column from each side); slots preferred; needs >= 2 free belt spaces; digs only with <= 2 slots used; otherwise pauses as stuck.
+- Safety: game app must stay in front; stops at any popup/win/fail/map; pauses on unreadable state, no-effect taps, 45 s idle; max 400 moves.
+- Log: Download/PixelFlowBot/pfbot_*.txt (JSON lines: moves with state, level_end outcome guess).
+- Replayed on recordings (decisions only, no game simulation). Not yet tested on the phone.
+
 ## Board reader status (Python prototype)
 - tools/board_reader.py: calibrates grid once per level from the full board (frequency fit of cube spacing), then reads every cube color.
 - Tested on Level 24 start, Level 24 mid-level (with cleared cubes) and Level 25 start: redrawn boards match the screenshots.
