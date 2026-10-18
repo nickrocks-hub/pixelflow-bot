@@ -189,6 +189,10 @@ public class NonogramActivity extends Activity {
         tr.addView(small("Save version", Ui.INFO, v -> saveVersion()), weight());
         tr.addView(small("Reset…", Ui.DANGER, v -> resetDialog()), weight());
         tc.addView(tr);
+        LinearLayout tr2 = new LinearLayout(this);
+        tr2.addView(small("✓ Mark stable", Ui.MUTED, v -> markStable()), weight());
+        tr2.addView(small("↶ Roll back to stable", Ui.MUTED, v -> rollbackDialog()), weight());
+        tc.addView(tr2);
         trainLive = text("", 12, Ui.TEXT);
         trainLive.setTypeface(Ui.MONO);
         trainLive.setPadding(dp(4), dp(8), 0, 0);
@@ -496,7 +500,9 @@ public class NonogramActivity extends Activity {
             weightsText.setText(a.model.updates == 0 ? "Nothing yet." : a.model.explain(8).trim());
         }
         List<ModelStore.Info> vs = hub.stores[k].list();
-        modelInfo.setText(vs.isEmpty() ? "No saved versions yet (autosaves every 100 puzzles)." : "Latest saved: " + vs.get(0));
+        int stable = hub.stores[k].stableVersion();
+        modelInfo.setText((vs.isEmpty() ? "No saved versions yet (autosaves every 100 puzzles)." : "Latest saved: " + vs.get(0))
+                + "\n" + (stable < 0 ? "No stable version marked." : "Stable: v" + stable + " (Roll back returns here)"));
         curve.invalidate();
     }
 
@@ -514,6 +520,35 @@ public class NonogramActivity extends Activity {
             ModelStore.Info i = hub.saveVersion(k, "");
             toast("Saved " + hub.learners[k].name() + " v" + i.version);
         } catch (Exception e) { toast("Save failed: " + e.getMessage()); }
+    }
+
+    /** Saves the current model as a new version and marks it as the known-good one. */
+    private void markStable() {
+        int k = hub.training ? hub.trainingWhich : trainWhich;
+        try {
+            ModelStore.Info i = hub.saveVersion(k, "stable");
+            hub.stores[k].markStable(i.version);
+            toast(hub.learners[k].name() + " v" + i.version + " marked stable");
+        } catch (Exception e) { toast("Couldn't mark stable: " + e.getMessage()); }
+        refreshTraining();
+    }
+
+    private void rollbackDialog() {
+        if (hub.training) { toast("Stop training first."); return; }
+        int stable = hub.stores[trainWhich].stableVersion();
+        if (stable < 0) { toast("No stable version yet — use Mark stable when the model is good."); return; }
+        new AlertDialog.Builder(this).setTitle("Roll back to v" + stable + "?")
+                .setMessage("The current weights are replaced by the stable version. Saved versions are kept.")
+                .setPositiveButton("Roll back", (d, w) -> {
+                    try {
+                        synchronized (hub.lock) { hub.stores[trainWhich].rollbackToStable(hub.learners[trainWhich].agent); }
+                        com.nickrocks.pixelflowbot.game.nonogram.agent.PlayAdapter.configure(hub.learners[trainWhich].agent);
+                        hub.learners[trainWhich].agent.mode = Agent.Mode.PLAY;
+                        toast("Rolled back to v" + stable);
+                    } catch (Exception e) { toast("Rollback failed: " + e.getMessage()); }
+                    refreshTraining();
+                    refreshAi();
+                }).setNegativeButton("Cancel", null).show();
     }
 
     private void resetDialog() {

@@ -122,10 +122,43 @@ public final class ModelStore {
         return i;
     }
 
-    /** Deletes every saved model and the autosave. */
+    /** Deletes every saved model, the autosave and the stable mark. */
     public void deleteAll() {
         File[] fs = dir.listFiles((d, n) -> n.startsWith("model_"));
         if (fs != null) for (File f : fs) f.delete();
+        new File(dir, "stable.txt").delete();
+    }
+
+    // ---------------------------------------------------------------- stable version / rollback
+
+    /** Marks a saved version as the known-good one that {@link #rollbackToStable} returns to. */
+    public void markStable(int version) throws IOException {
+        if (!new File(dir, "model_v" + version + ".json").exists()) throw new IOException("no saved version v" + version);
+        write(new File(dir, "stable.txt"), String.valueOf(version));
+    }
+
+    /** The version marked stable, or −1. */
+    public int stableVersion() {
+        File f = new File(dir, "stable.txt");
+        try {
+            int v = Integer.parseInt(new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8).trim());
+            return new File(dir, "model_v" + v + ".json").exists() ? v : -1;
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
+    /**
+     * Replaces the agent's current model with the stable version (and makes that the autosave),
+     * undoing training that made things worse. Returns the version restored.
+     */
+    public int rollbackToStable(Agent a) throws IOException {
+        int v = stableVersion();
+        if (v < 0) throw new IOException("no stable version marked");
+        load(a, new File(dir, "model_v" + v + ".json"));
+        a.replay.clear();
+        autosave(a);
+        return v;
     }
 
     private static void write(File f, String s) throws IOException {

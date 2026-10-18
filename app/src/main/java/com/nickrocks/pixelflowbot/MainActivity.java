@@ -28,6 +28,7 @@ public class MainActivity extends Activity {
     private static final int REQ_NOTIF = 2;
 
     private TextView tapChip, capChip;
+    private LinearLayout libraryBox;
     private Button tapButton, capButton;
 
     @Override
@@ -51,24 +52,19 @@ public class MainActivity extends Activity {
         chips.addView(capChip);
         root.addView(chips);
 
-        root.addView(section("PLAY & TRAIN"));
-        LinearLayout ng = card();
-        TextView ngT = text("▦ Nonogram game", 18, Ui.TEXT);
-        ngT.setTypeface(Ui.BLACK);
-        ng.addView(ngT);
-        TextView ngB = text("A built-in Nonogram you can play by touch (5×5, 10×10, 15×15, unique-solution puzzles from seeds). Watch the constraint-solver baseline or the learning agent play it, train the learner, and compare them on separate evaluation puzzles.", 13, Ui.TEXT_DIM);
-        ngB.setPadding(0, dp(6), 0, dp(10));
-        ng.addView(ngB);
-        ng.addView(action("Play Nonogram", Ui.GAME_NONO, v -> startActivity(new Intent(this, NonogramActivity.class))));
-        root.addView(ng);
+        root.addView(section("GAME LIBRARY"));
+        libraryBox = new LinearLayout(this);
+        libraryBox.setOrientation(LinearLayout.VERTICAL);
+        root.addView(libraryBox);
+        root.addView(action("＋  Add a game", Ui.MUTED, v -> AddGame.start(this)));
 
-        root.addView(section("SOLVE NONOGRAM.COM"));
+        root.addView(section("PERMISSIONS FOR GAMES ON YOUR SCREEN"));
         tapButton = action("Turn on the tap service", Ui.ACCENT,
                 v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
-        root.addView(step("1", "Tap service", "Lets the bot tap for you. Find AI Game Bot under Accessibility → Installed apps.", tapButton));
+        root.addView(step("1", "Tap service", "Lets the bot tap and swipe for you, only after you press Solve/Start. Find AI Game Bot under Accessibility → Installed apps.", tapButton));
         capButton = action("Start screen capture", Ui.INFO, v -> requestCapture());
-        root.addView(step("2", "Screen capture", "Lets the bot see the game. Choose \"Entire screen\" when asked.", capButton));
-        root.addView(step("3", "Solve", "Open a level in Nonogram.com and press ▶ Solve on the floating panel. It reads every clue, solves the whole puzzle with proven logic and fills it in with fast swipes. It never guesses, so it never costs a heart. ⟳ Next level: ON moves on to the next level by itself.", null));
+        root.addView(step("2", "Screen capture", "Lets the bot see the game. Choose \"Entire screen\" when asked. Needed again after every app update.", capButton));
+        root.addView(step("3", "Play", "Open the game and use the floating panel. Today that's Nonogram.com: ▶ Solve reads every clue, solves with proven logic and fills it in; ⟳ Next level moves on by itself. Each session is saved as experience in the game's profile.", null));
 
         Button stop = action("■  STOP everything", Ui.DANGER, v -> {
             CaptureService.stop(this);
@@ -115,13 +111,13 @@ public class MainActivity extends Activity {
         TextView t = text("AI GAME BOT", 28, Color.WHITE);
         t.setTypeface(Ui.BLACK);
         titles.addView(t);
-        TextView v = text("v1.2 · Nonogram + learning AI", 12, 0xCCFFFFFF);
+        TextView v = text("v1.3 · agent platform · Nonogram", 12, 0xCCFFFFFF);
         v.setTypeface(Ui.MONO);
         titles.addView(v);
         top.addView(titles);
         h.addView(top);
 
-        TextView sub = text("Play Nonogram, watch a learning AI improve at it, or let the bot solve Nonogram.com for you.", 14, 0xE6FFFFFF);
+        TextView sub = text("A game-playing agent platform. Nonogram is fully supported; other games can be added and start in calibration.", 14, 0xE6FFFFFF);
         sub.setPadding(0, dp(14), 0, 0);
         h.addView(sub);
         return h;
@@ -284,6 +280,7 @@ public class MainActivity extends Activity {
     }
 
     private void refresh() {
+        refreshLibrary();
         boolean tap = TapService.isRunning(), cap = CaptureService.isRunning();
         setChip(tapChip, "Taps", tap);
         setChip(capChip, "Capture", cap);
@@ -316,6 +313,20 @@ public class MainActivity extends Activity {
                 .putExtra(CaptureService.EXTRA_DATA, data);
         startForegroundService(svc);
         capChip.postDelayed(this::refresh, 800);
+    }
+
+    /** One card per game profile, with its honest status. */
+    private void refreshLibrary() {
+        if (libraryBox == null) return;
+        libraryBox.removeAllViews();
+        for (com.nickrocks.pixelflowbot.core.GameProfile p : AgentPlatform.get(this).profiles.list()) {
+            int color = p.support == com.nickrocks.pixelflowbot.core.GameProfile.Support.SUPPORTED ? Ui.GAME_NONO : Ui.GAME_AMAZE;
+            String tag = p.kind == com.nickrocks.pixelflowbot.core.GameProfile.Kind.BUILT_IN ? "BUILT-IN"
+                    : p.support == com.nickrocks.pixelflowbot.core.GameProfile.Support.SUPPORTED ? "ADAPTER" : "CALIBRATING";
+            View card = game(color, p.name, tag, p.statusLine() + (p.notes.isEmpty() ? "" : "\n" + p.notes) + "\nProfile v" + p.version + " · tap for details");
+            card.setOnClickListener(v -> startActivity(new Intent(this, ProfileActivity.class).putExtra(ProfileActivity.EXTRA_ID, p.id)));
+            libraryBox.addView(card);
+        }
     }
 
     private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }

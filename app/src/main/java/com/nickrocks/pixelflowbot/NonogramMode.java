@@ -364,6 +364,7 @@ final class NonogramMode {
         grid = r.grid;
         baseRed = r.redCells;
         log("{\"event\":\"read\",\"grid\":" + Recorder.q(grid.toString()) + ",\"clues\":" + Recorder.q(r.cluesText()) + "}");
+        recBegin(r, "grid " + grid);
         setInfo("Grid " + grid + " · solving…");
         worker.execute(() -> {
             // Filled cells on the board are always right (the game rejects wrong fills), and cells
@@ -378,6 +379,47 @@ final class NonogramMode {
     }
 
     private String lastSavedClues;
+
+    // ---- experience recording on the shared core (never affects play: failures are swallowed)
+    private com.nickrocks.pixelflowbot.core.EpisodeRecorder episode;
+    private final com.nickrocks.pixelflowbot.nono.NonoComAdapter adapter = new com.nickrocks.pixelflowbot.nono.NonoComAdapter();
+    private int gesturesSinceObs;
+    private long firstGestureAt;
+    private String movesSinceObs = "";
+
+    private void recBegin(NonoVision.Reading r, String note) {
+        try {
+            if (episode != null && episode.open()) { recStep(r); return; }   // e.g. re-read after melted clues
+            AgentPlatform pl = AgentPlatform.get(svc);
+            com.nickrocks.pixelflowbot.core.GameProfile prof = pl.profile(com.nickrocks.pixelflowbot.nono.NonoComAdapter.ID);
+            episode = new com.nickrocks.pixelflowbot.core.EpisodeRecorder(pl.experience, prof, "SOLVER", adapter);
+            episode.begin(com.nickrocks.pixelflowbot.nono.NonoComAdapter.fromReading(r, prof), note);
+            gesturesSinceObs = 0;
+            movesSinceObs = "";
+        } catch (Throwable t) { Log.w(TAG, "experience: begin failed", t); }
+    }
+
+    private void recGesture(String what) {
+        if (gesturesSinceObs++ == 0) firstGestureAt = System.currentTimeMillis();
+        if (movesSinceObs.length() < 120) movesSinceObs += (movesSinceObs.isEmpty() ? "" : ", ") + what;
+    }
+
+    private void recStep(NonoVision.Reading r) {
+        try {
+            if (episode == null || !episode.open() || gesturesSinceObs == 0) return;
+            com.nickrocks.pixelflowbot.core.GameAction a = com.nickrocks.pixelflowbot.core.GameAction.macro(gesturesSinceObs, movesSinceObs);
+            a.source = "solver";
+            long now = System.currentTimeMillis();
+            com.nickrocks.pixelflowbot.core.GameProfile prof = AgentPlatform.get(svc).profile(com.nickrocks.pixelflowbot.nono.NonoComAdapter.ID);
+            episode.step(a, firstGestureAt, now - firstGestureAt, com.nickrocks.pixelflowbot.nono.NonoComAdapter.fromReading(r, prof));
+            gesturesSinceObs = 0;
+            movesSinceObs = "";
+        } catch (Throwable t) { Log.w(TAG, "experience: step failed", t); }
+    }
+
+    private void recEnd(String why) {
+        try { if (episode != null && episode.open()) episode.end(why, null); } catch (Throwable t) { Log.w(TAG, "experience: end failed", t); }
+    }
     private boolean savedFailFrame;
 
     /** Keeps ONE copy of a frame the reader couldn't make sense of (per puzzle), and logs what it read. */
@@ -553,6 +595,7 @@ final class NonogramMode {
         int[] m = plan.get(planPos++);
         sinceCheck++;
         float y = grid.cy(m[0]);
+        recGesture("r" + (m[0] + 1) + " c" + (m[1] + 1) + (m[1] == m[2] ? "" : "–" + (m[2] + 1)));
         Runnable after = () -> {
             filled += m[2] - m[1] + 1;
             setInfo("Row " + (m[0] + 1) + ": filled " + (m[1] == m[2] ? "col " + (m[1] + 1) : "cols " + (m[1] + 1) + "–" + (m[2] + 1)));
@@ -581,6 +624,7 @@ final class NonogramMode {
                 return;
             }
             if (r.grid.rows != grid.rows || r.grid.cols != grid.cols) { pause("the board changed size — a different puzzle?"); return; }
+            recStep(r);
             int wrong = -1, missing = 0;
             for (int i = 0; i < solution.length; i++) {
                 int have = r.cells[i];
@@ -642,6 +686,7 @@ final class NonogramMode {
         if (partial) { partialRound(); return; }
         long secs = (System.currentTimeMillis() - startedAt) / 1000;
         log("{\"event\":\"solved\",\"secs\":" + secs + "}");
+        recEnd("solved");
         state = IDLE;
         refresh();
         setInfo("✓ Solved in " + secs + " s · " + checks + " checks.");
@@ -655,6 +700,7 @@ final class NonogramMode {
         refresh();
         setInfo("Paused: " + why + "\nResume continues from a fresh read.");
         log("{\"event\":\"pause\",\"why\":" + Recorder.q(why) + "}");
+        recEnd("paused: " + why);
     }
 
     private void resume() {
@@ -671,6 +717,7 @@ final class NonogramMode {
             if (state != PLAYING) return;
             if (CAPTURE_OFF.equals(r.error)) { pause(CAPTURE_OFF); return; }
             if (r.grid == null || r.cells == null) { pause("no puzzle on screen"); return; }
+            recBegin(r, "resumed");
             buildPlan(r);
             if (plan.isEmpty()) { done(); return; }
             ensureFillMode(r, 0);
@@ -679,6 +726,7 @@ final class NonogramMode {
 
     void end(String why) {
         if (state != IDLE) log("{\"event\":\"end\",\"why\":" + Recorder.q(why) + "}");
+        recEnd(why);
         state = IDLE;
         readId++;
         setCompact(false);
