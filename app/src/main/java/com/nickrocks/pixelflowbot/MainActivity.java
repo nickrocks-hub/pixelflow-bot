@@ -111,7 +111,7 @@ public class MainActivity extends Activity {
         TextView t = text("AI GAME BOT", 28, Color.WHITE);
         t.setTypeface(Ui.BLACK);
         titles.addView(t);
-        TextView v = text("v1.3 · agent platform · Nonogram", 12, 0xCCFFFFFF);
+        TextView v = text("v1.4 · agent platform · 4 games", 12, 0xCCFFFFFF);
         v.setTypeface(Ui.MONO);
         titles.addView(v);
         top.addView(titles);

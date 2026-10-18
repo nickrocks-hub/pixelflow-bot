@@ -35,7 +35,7 @@ final class GestureExecutor implements ActionExecutor {
     public void execute(GameAction a, Callback cb) {
         long t0 = SystemClock.uptimeMillis();
         List<GameAction.Stroke> ss = a.strokes();
-        if (a.kind == GameAction.Kind.MACRO || ss.isEmpty()) { cb.done(false, 0, "nothing to perform"); return; }
+        if (a.kind == GameAction.Kind.MACRO || a.kind == GameAction.Kind.LOGICAL || ss.isEmpty()) { cb.done(false, 0, "nothing to perform"); return; }
         if (ss.size() > maxSimultaneousStrokes()) { cb.done(false, 0, "too many simultaneous strokes for this phone"); return; }
         if (a.durationMs() > GestureDescription.getMaxGestureDuration()) { cb.done(false, 0, "gesture longer than Android allows"); return; }
         GestureDescription.Builder b = new GestureDescription.Builder();

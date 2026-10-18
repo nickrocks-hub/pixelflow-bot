@@ -101,6 +101,8 @@ public class ProfileActivity extends Activity {
         root.addView(st);
         if ("nonogram-ingame".equals(p.id)) {
             root.addView(action("Open the game", Ui.GAME_NONO, v -> startActivity(new Intent(this, NonogramActivity.class))));
+        } else if (LabGames.has(p.adapterId)) {
+            root.addView(action("Open the game", Ui.GAME_NONO, v -> startActivity(new Intent(this, LabActivity.class).putExtra(LabActivity.EXTRA_PROFILE, p.id))));
         } else if (p.packageName != null) {
             root.addView(action("Open " + p.name, Ui.INFO, v -> {
                 Intent i = getPackageManager().getLaunchIntentForPackage(p.packageName);

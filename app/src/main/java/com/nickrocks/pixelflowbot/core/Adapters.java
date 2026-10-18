@@ -29,10 +29,22 @@ public final class Adapters {
                     + "solves with proven logic, fills by swipes, checks the board, presses Next Level. Records every session as experience.",
             "Plays with the exact solver, not a learned policy. Cells under hidden clues are left until the clue shows.");
 
+    public static final Info BLOCKS_SIM = new Info("blocks-sim", "Built-in Block Puzzle (turn-based)", GameProfile.Pace.TURN_BASED,
+            "Exact state; seeded games with separate training/evaluation seeds; random and hand-written baselines; "
+                    + "learning agent (linear Q-learning over board measurements, learns from the game's points).",
+            "Simulator only. The learner judges one placement at a time; it does not plan a whole tray ahead.");
+
+    public static final Info DODGE_SIM = new Info("dodge-sim", "Built-in Dodge (real-time, 20 Hz)", GameProfile.Pace.REAL_TIME,
+            "Exact state at 20 ticks/s; seeded games; random, never-move and hand-written baselines; learning agent; "
+                    + "simulated screen/tap lag to measure how much delay a reflex game tolerates.",
+            "Simulator only. Measured: 50 ms of lag already halves survival, so phone bots need very low latency for games like this.");
+
     public static List<Info> all() {
         List<Info> l = new ArrayList<>();
         l.add(NONOGRAM_SIM);
         l.add(NONOGRAM_COM);
+        l.add(BLOCKS_SIM);
+        l.add(DODGE_SIM);
         return l;
     }
 
@@ -64,6 +76,26 @@ public final class Adapters {
         b.pace = GameProfile.Pace.TURN_BASED;
         b.notes = "Checked on real screens: normal levels, frozen clues, Challenge mode.";
         l.add(b);
+        GameProfile c = new GameProfile();
+        c.id = "block-puzzle";
+        c.name = "Block Puzzle (built-in)";
+        c.kind = GameProfile.Kind.BUILT_IN;
+        c.adapterId = BLOCKS_SIM.id;
+        c.support = GameProfile.Support.SUPPORTED;
+        c.pace = GameProfile.Pace.TURN_BASED;
+        c.notes = "Second test game: placement and line clears, long-term planning.";
+        c.settings.put("objective", "score points by placing pieces and clearing full rows/columns; avoid running out of space");
+        l.add(c);
+        GameProfile d = new GameProfile();
+        d.id = "dodge";
+        d.name = "Dodge (built-in)";
+        d.kind = GameProfile.Kind.BUILT_IN;
+        d.adapterId = DODGE_SIM.id;
+        d.support = GameProfile.Support.SUPPORTED;
+        d.pace = GameProfile.Pace.REAL_TIME;
+        d.notes = "Real-time test game: reactions and timing.";
+        d.settings.put("objective", "survive as long as possible (60 s wins)");
+        l.add(d);
         return l;
     }
 }

@@ -44,7 +44,7 @@ public class CoreTests {
         ProfileStore ps = new ProfileStore(dir);
         for (GameProfile p : Adapters.builtInProfiles()) ps.ensure(p);
         for (GameProfile p : Adapters.builtInProfiles()) ps.ensure(p);       // idempotent
-        check(ps.list().size() == 2, "two built-in profiles");
+        check(ps.list().size() == Adapters.builtInProfiles().size(), "built-in profiles created");
         GameProfile com = ps.get("nonogram-com");
         check(com != null && com.version == 1 && "com.easybrain.nonogram".equals(com.packageName), "built-in nonogram-com v1");
         com.settings.put("objective", "fill the picture");
@@ -53,13 +53,13 @@ public class CoreTests {
         check("fill the picture".equals(ps.get("nonogram-com").settings.get("objective")), "settings persist");
         check(ps.version("nonogram-com", 1).settings.isEmpty(), "old version unchanged");
         GameProfile u = new GameProfile();
-        u.name = "Block Puzzle!";
+        u.name = "Tile Match!";
         u.id = ps.freeId(u.name);
-        u.packageName = "com.example.block";
+        u.packageName = "com.example.tiles";
         GameProfile su = ps.save(u);
-        check("block-puzzle".equals(su.id) && su.support == GameProfile.Support.CALIBRATING, "user game starts calibrating");
-        check("block-puzzle-2".equals(ps.freeId("Block Puzzle")), "free id avoids clash");
-        check(!ps.delete("nonogram-com") && ps.delete("block-puzzle") && ps.get("block-puzzle") == null, "delete: built-in refused, user ok");
+        check("tile-match".equals(su.id) && su.support == GameProfile.Support.CALIBRATING, "user game starts calibrating");
+        check("tile-match-2".equals(ps.freeId("Tile Match")), "free id avoids clash");
+        check(!ps.delete("nonogram-com") && ps.delete("tile-match") && ps.get("tile-match") == null, "delete: built-in refused, user ok");
         check(GameProfile.fromJson(com.toJson()).settings.equals(com.settings), "json round trip");
     }
 

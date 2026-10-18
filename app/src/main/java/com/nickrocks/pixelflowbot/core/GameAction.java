@@ -17,7 +17,7 @@ import java.util.Locale;
  * strokes (API 26+).
  */
 public final class GameAction {
-    public enum Kind { TAP, LONG_PRESS, SWIPE, DRAG, HOLD, RELEASE, MULTI, MACRO }
+    public enum Kind { TAP, LONG_PRESS, SWIPE, DRAG, HOLD, RELEASE, MULTI, MACRO, LOGICAL }
 
     public static final class Stroke {
         public final float[] xy;        // x0,y0,x1,y1,… (at least one point)
@@ -86,6 +86,11 @@ public final class GameAction {
      */
     public static GameAction macro(int gestures, String label) {
         return new GameAction(Kind.MACRO, label + " (" + gestures + " gestures)", Collections.<Stroke>emptyList());
+    }
+
+    /** A game-level move in a simulator (no screen gesture), e.g. "piece 2 at r3 c5". Record only. */
+    public static GameAction logical(String label) {
+        return new GameAction(Kind.LOGICAL, label, Collections.<Stroke>emptyList());
     }
 
     /** Null if every point is on screen; otherwise what's wrong. */
