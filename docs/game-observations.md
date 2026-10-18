@@ -52,8 +52,11 @@ Characters: same colors incl. black (Level 25). Shot counts seen: 1 to 50.
 - Several same-colour characters sent together; leftovers (K1, K1, K2, B9, Y8) filled the slots.
 - Fixed in v0.4: grid from cube spacing (same on every recorded frame, any point in a level), cubes must be seen in 2 reads (filters shots), planner v2 (in-flight shots per colour, slots first, clean moves preferred, calculated risk when no safe move, as the user did in Level 24).
 
-## Game 2 (v0.4)
-- User reports: the bot won a level on its own (first win). Log not yet reviewed.
+## Game 2 (v0.4, Level 25, WON) - logs/pfbot_20261018_075411_v04_L25_win.txt
+- Same level that v0.3 lost. 61 moves in about 100 s; never more than 2 waiting slots used; ended on the win popup with the board cleared.
+- Grid read the full 35x41 board correctly from the first frame.
+- Noise to fix later: up to ~37 cells read as orange mid-game on a level with no orange cubes (likely hit animations on yellow cubes).
+- Win rate so far (v0.4): 1 of 1. Need more games before trusting it.
 
 ## Board reader status (Python prototype)
 - tools/board_reader.py: calibrates grid once per level from the full board (frequency fit of cube spacing), then reads every cube color.
