@@ -59,10 +59,12 @@ public class MainActivity extends Activity {
         capButton = action("Start screen capture", Ui.INFO, v -> requestCapture());
         root.addView(step("2", "Screen capture", "Lets the bot see the game. Choose \"Entire screen\" when asked.", capButton));
         root.addView(step("3", "Pick a game", "Use the ◆ game button on the floating panel to switch, open the game, then press Start / Solve.", null));
-        root.addView(step("4", "Next level, automatically", "⟳ Next level: ON makes the bot press Continue / Next / Play after each win. Nonogram works out of the box. For Pixel Flow and Candy Crush, on the first level-complete screen press Teach next and tap the button yourself (and again on any screen that follows). It only presses a taught button when that exact button is showing, so it never taps ads, offers or fail screens.", null));
+        root.addView(step("4", "Next level, automatically", "⟳ Next level: ON makes the bot press Continue / Next / Play after each win. Nonogram and Amaze GO work out of the box. For Pixel Flow and Candy Crush, on the first level-complete screen press Teach next and tap the button yourself (and again on any screen that follows). It only presses a taught button when that exact button is showing, so it never taps ads, offers or fail screens.", null));
 
         root.addView(section("GAMES"));
-        root.addView(game(Ui.GAME_NONO, "Nonogram", "NEW",
+        root.addView(game(Ui.GAME_AMAZE, "Amaze GO", "NEW",
+                "Traces every arrow, taps only the ones with a completely clear way out (so it never loses a drop), several at once, zooms out big boards and moves on to the next level by itself."));
+        root.addView(game(Ui.GAME_NONO, "Nonogram", null,
                 "Reads every clue, solves the whole puzzle with proven logic, then fills it in with fast swipes. Never guesses, so it never costs a heart."));
         root.addView(game(Ui.GAME_CANDY, "Candy Crush", null,
                 "Finds the board, ranks every swap and plays the best one. Pauses on popups and level ends."));
@@ -136,7 +138,7 @@ public class MainActivity extends Activity {
         TextView t = text("PixelFlow Bot", 28, Color.WHITE);
         t.setTypeface(Ui.BLACK);
         titles.addView(t);
-        TextView v = text("v0.8.2 · game auto-players", 12, 0xCCFFFFFF);
+        TextView v = text("v0.9 · game auto-players", 12, 0xCCFFFFFF);
         v.setTypeface(Ui.MONO);
         titles.addView(v);
         top.addView(titles);

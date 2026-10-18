@@ -280,6 +280,11 @@ final class AutoNext {
             return;
         }
         say.accept("Level done — looking for the next-level button…");
+        if (taught.isEmpty()) {
+            builtinLoop(id, builtin, ready, 0, 0, 0, System.currentTimeMillis() + STEP_TIMEOUT_MS,
+                    System.currentTimeMillis() + readyTimeoutMs + STEP_TIMEOUT_MS, say, onReady, onFail);
+            return;
+        }
         stepLoop(id, game, taught, builtin, 0, 0, System.currentTimeMillis() + STEP_TIMEOUT_MS, ready, readyTimeoutMs, say, onReady, onFail);
     }
 
@@ -325,6 +330,65 @@ final class AutoNext {
                     say.accept("Pressing " + (total > 1 ? "step " + (step + 1) + "/" + total : "Next Level") + "…");
                     tap(pt[0], pt[1], () -> handler.postDelayed(() -> stepLoop(id, game, taught, builtin, step + 1, 0,
                             System.currentTimeMillis() + STEP_TIMEOUT_MS, ready, readyTimeoutMs, say, onReady, onFail), 1200));
+                });
+            });
+        });
+    }
+
+    /**
+     * Built-in detectors: keep pressing whatever the game's detector recognises (e.g. sun →
+     * Continue → Next Level) until the new level is ready. Each press must be seen twice; at most
+     * 6 presses; stops if nothing recognisable appears for a while.
+     */
+    private void builtinLoop(int id, Function<Frame, float[]> builtin, Predicate<Frame> ready, int presses, int hits, int readyHits,
+                             long deadline, long hardDeadline, Consumer<String> say, Runnable onReady, Consumer<String> onFail) {
+        if (id != runId) return;
+        long now = System.currentTimeMillis();
+        if (now > deadline || now > hardDeadline || presses > 6) {
+            running = false;
+            onFail.accept(presses == 0 ? "didn't see the next-level button — a popup or ad may be up. Close it, then press Start/Solve."
+                    : "the next level didn't appear (an ad or popup may be open). Close it, then press Start/Solve.");
+            return;
+        }
+        fresh(0, frame -> {
+            if (id != runId) return;
+            if (frame == null) {
+                handler.postDelayed(() -> builtinLoop(id, builtin, ready, presses, 0, 0, deadline, hardDeadline, say, onReady, onFail), POLL_MS);
+                return;
+            }
+            worker.execute(() -> {
+                float[] at = null;
+                boolean ok = false;
+                try { at = builtin.apply(frame); } catch (Throwable ignored) { }
+                if (at == null && presses > 0) { try { ok = ready.test(frame); } catch (Throwable ignored) { } }
+                final float[] pt = at;
+                final boolean isReady = ok;
+                handler.post(() -> {
+                    if (id != runId) return;
+                    if (isReady) {
+                        if (readyHits + 1 >= 2) { running = false; onReady.run(); return; }
+                        handler.postDelayed(() -> builtinLoop(id, builtin, ready, presses, 0, readyHits + 1, deadline, hardDeadline, say, onReady, onFail), 600);
+                        return;
+                    }
+                    if (pt == null) {
+                        handler.postDelayed(() -> builtinLoop(id, builtin, ready, presses, 0, 0, deadline, hardDeadline, say, onReady, onFail), POLL_MS);
+                        return;
+                    }
+                    if (hits + 1 < 2) {
+                        handler.postDelayed(() -> builtinLoop(id, builtin, ready, presses, hits + 1, 0, deadline, hardDeadline, say, onReady, onFail), 450);
+                        return;
+                    }
+                    int[] pr = host.panelRect();
+                    if (pr != null && pt[0] >= pr[0] && pt[0] <= pr[2] && pt[1] >= pr[1] && pt[1] <= pr[3]) {
+                        running = false;
+                        onFail.accept("the panel is covering the next-level button — drag it away");
+                        return;
+                    }
+                    say.accept("Pressing the next-level button…");
+                    // After a press, allow the full load time (levels, ads) before giving up.
+                    long newHard = Math.max(hardDeadline, System.currentTimeMillis() + STEP_TIMEOUT_MS);
+                    tap(pt[0], pt[1], () -> handler.postDelayed(() -> builtinLoop(id, builtin, ready, presses + 1, 0, 0,
+                            newHard, newHard, say, onReady, onFail), 1300));
                 });
             });
         });

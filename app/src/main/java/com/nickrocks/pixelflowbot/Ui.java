@@ -35,6 +35,7 @@ final class Ui {
     static final int GAME_PIXELFLOW = 0xFF8B5CF6;
     static final int GAME_CANDY = 0xFFEC4899;
     static final int GAME_NONO = 0xFF0EA5E9;
+    static final int GAME_AMAZE = 0xFFF59E0B;
 
     static final Typeface MEDIUM = Typeface.create("sans-serif-medium", Typeface.NORMAL);
     static final Typeface MONO = Typeface.create("monospace", Typeface.NORMAL);

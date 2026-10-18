@@ -69,6 +69,7 @@ public final class CandyMode {
     private boolean candyMode;
     private String game = "pixelflow";
     private NonogramMode nono;
+    private AmazeMode amaze;
     private AutoNext next;
     private Button nextToggle, nextTeach;
     private View modeRow, nextRow;
@@ -323,6 +324,13 @@ public final class CandyMode {
             Log.e(TAG, "Nonogram mode could not attach", th);
             this.nono = null;
         }
+        try {
+            this.amaze = new AmazeMode(this.svc, this);
+            this.panel.addView(this.amaze.box());
+        } catch (Throwable th) {
+            Log.e(TAG, "Amaze GO mode could not attach", th);
+            this.amaze = null;
+        }
         this.panel.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() { // from class: com.nickrocks.pixelflowbot.CandyMode.10
             @Override // android.view.View.OnAttachStateChangeListener
             public void onViewAttachedToWindow(View view) {
@@ -351,19 +359,24 @@ public final class CandyMode {
             toast("Stop the nonogram solver first.");
             return;
         }
+        if ("amaze".equals(this.game) && this.amaze != null && this.amaze.busy()) {
+            toast("Stop the Amaze GO solver first.");
+            return;
+        }
         if ("pixelflow".equals(this.game) && (flag("auto") || flag("live") || flag("readBusy"))) {
             toast("Pixel Flow is busy. Stop its auto-play/Live first.");
             return;
         }
         String next;
         if ("pixelflow".equals(this.game)) next = "candy";
-        else if ("candy".equals(this.game)) next = this.nono != null ? "nonogram" : "pixelflow";
+        else if ("candy".equals(this.game)) next = this.nono != null ? "nonogram" : this.amaze != null ? "amaze" : "pixelflow";
+        else if ("nonogram".equals(this.game)) next = this.amaze != null ? "amaze" : "pixelflow";
         else next = "pixelflow";
         setGame(next);
     }
 
     private void setGame(String g) {
-        if (!"candy".equals(g) && !("nonogram".equals(g) && this.nono != null)) g = "pixelflow";
+        if (!"candy".equals(g) && !("nonogram".equals(g) && this.nono != null) && !("amaze".equals(g) && this.amaze != null)) g = "pixelflow";
         this.game = g;
         this.candyMode = "candy".equals(g);
         boolean pf = "pixelflow".equals(g);
@@ -379,16 +392,17 @@ public final class CandyMode {
         }
         this.candyBox.setVisibility(this.candyMode ? View.VISIBLE : View.GONE);
         if (this.nono != null) this.nono.box().setVisibility("nonogram".equals(g) ? View.VISIBLE : View.GONE);
-        this.modeButton.setText(pf ? "◆ Pixel Flow  ⇄" : this.candyMode ? "◆ Candy Crush  ⇄" : "◆ Nonogram  ⇄");
+        if (this.amaze != null) this.amaze.box().setVisibility("amaze".equals(g) ? View.VISIBLE : View.GONE);
+        this.modeButton.setText("◆ " + gameName(g) + "  ⇄");
         this.modeButton.setTextColor(-1);
-        tint(this.modeButton, pf ? Ui.GAME_PIXELFLOW : this.candyMode ? Ui.GAME_CANDY : Ui.GAME_NONO);
+        tint(this.modeButton, pf ? Ui.GAME_PIXELFLOW : this.candyMode ? Ui.GAME_CANDY : "amaze".equals(g) ? Ui.GAME_AMAZE : Ui.GAME_NONO);
         refreshNext();
     }
 
     // ---------------------------------------------------------------- auto next level
 
     String gameName(String g) {
-        return "candy".equals(g) ? "Candy Crush" : "nonogram".equals(g) ? "Nonogram" : "Pixel Flow";
+        return "candy".equals(g) ? "Candy Crush" : "nonogram".equals(g) ? "Nonogram" : "amaze".equals(g) ? "Amaze GO" : "Pixel Flow";
     }
 
     private void refreshNext() {
@@ -397,7 +411,7 @@ public final class CandyMode {
         int n = this.next.steps(this.game).size();
         this.nextToggle.setText(on ? "⟳ Next level: ON" : "⟳ Next level: off");
         tint(this.nextToggle, on ? Ui.ACCENT : C_GREY);
-        boolean builtin = "nonogram".equals(this.game);
+        boolean builtin = "nonogram".equals(this.game) || "amaze".equals(this.game);
         this.nextTeach.setText(n > 0 ? "Teach (" + n + " step" + (n > 1 ? "s" : "") + ")" : builtin ? "Teach (built-in)" : "Teach next ⚠");
     }
 
@@ -406,6 +420,7 @@ public final class CandyMode {
         refreshNext();
         if ("candy".equals(this.game)) { setInfo(msg); return; }
         if ("nonogram".equals(this.game) && this.nono != null) { this.nono.note(msg); return; }
+        if ("amaze".equals(this.game) && this.amaze != null) { this.amaze.note(msg); return; }
         try {
             Method m = TapService.class.getDeclaredMethod("showNote", String.class);
             m.setAccessible(true);
@@ -472,6 +487,25 @@ public final class CandyMode {
                     start();
                 },
                 why -> say("Auto-next stopped: " + why));
+    }
+
+    /** Amaze GO cleared a level: press Next Level / the sun / Continue, then play the new board. */
+    void amazeSolved() {
+        if (this.amaze == null || !this.next.enabled("amaze") || !"amaze".equals(this.game)) return;
+        this.levelsDone++;
+        this.amaze.parkForNextLevel();
+        final com.nickrocks.pixelflowbot.amaze.AmazeVision v = new com.nickrocks.pixelflowbot.amaze.AmazeVision();
+        this.next.run("amaze", com.nickrocks.pixelflowbot.amaze.AmazeNext::find,
+                f -> {
+                    com.nickrocks.pixelflowbot.amaze.AmazeVision.Board b = v.read(f);
+                    return b.lives > 0 && (b.cutOff || !b.arrows.isEmpty());
+                },
+                90_000, this::say,
+                () -> this.amaze.autoStart(),
+                why -> {
+                    this.amaze.setCompact(false);
+                    say("Auto-next stopped: " + why);
+                });
     }
 
     /** Nonogram finished a puzzle. */
@@ -1284,6 +1318,7 @@ public final class CandyMode {
         if (!this.dead) {
             this.dead = true;
             if (this.nono != null) this.nono.shutdown();
+            if (this.amaze != null) this.amaze.shutdown();
             if (this.next != null) this.next.shutdown();
             if (this.state != 0 && this.rec != null) {
                 this.rec.line("{\"t\":" + System.currentTimeMillis() + ",\"event\":\"end\",\"why\":\"panel closed\",\"moves\":" + this.moves + "}");
