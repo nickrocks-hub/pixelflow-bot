@@ -1,4 +1,4 @@
-# AI GAME BOT — agent platform architecture (v1.4)
+# AI GAME BOT — agent platform architecture (v1.7)
 
 ## Stage 1 — what existed and is reused
 | Component | Where | Reused as |
@@ -59,25 +59,30 @@ java -cp /tmp/ct NonoProbe tools/nono/samples/*.png  # screen reader on saved fr
 ```
 APK: GitHub Actions `build.yml` (workflow_dispatch on branch `nonogram-mode`).
 
-## v1.6 — AI vision agent for any game (opt-in, your Anthropic API key)
-Games without a built-in player are played from **your written instructions** by a vision-language model:
-- `core/vlm/ClaudeVision`: Claude Messages API (`POST /v1/messages`, `anthropic-version: 2023-06-01`), one base64 JPEG
-  screenshot (540 px wide ≈ 900 image tokens) + text, `output_config.effort = low`. Key typed in the app, stored privately.
-- `core/vlm/InstructionAgent`: calibration (screen type, board rectangle, controls, HUD, goal, questions for you) and per-step
-  decisions (screen, what changed, last action's effect, next tap/long press/swipe/drag/wait/stop + reason + confidence).
-  Coordinates are scaled from the screenshot to the screen. Refuses off-screen points, status/navigation bars, and any ad,
-  purchase, login or dialog screen (pauses for you). Budget per session and calls-per-minute limit.
-- Session memory: the last 8 steps go back into each prompt. Rule learning: every 25 steps and at the end, the model condenses
-  the session into ≤ 8 rules with evidence (step numbers), saved in the profile, shown and editable — labelled as hypotheses.
-  Not reinforcement learning: no weights are trained.
-- Calibration is only treated as fact after you confirm (or edit) it on the profile page.
-- Experience: every step stored (state facts, action + timing, reward = the model's own report of the effect, labelled unverified).
-- `InstructionMode` runs it on the floating panel; `AiSettingsActivity` holds consent, key, model (Haiku 5.5 $0.10/$0.50 per
-  MTok ≈ $0.0005/step; Sonnet 5.5 $2/$10 ≈ $0.01/step), budget, rate, settle time, and a "Test connection" call.
+## v1.7 — completely offline: on-device AI agent
 
-Verified: `tools/core/VisionTests` (34 checks, fake model: request shape, reply parsing, scaling, refusals, budget, rate limit,
-memory, rule learning, calibration). Not verified: a live call to the API (no key in this environment) and play on a phone.
-Limits: a few seconds per step → puzzles, turn-based games and menus only; model coordinates are approximate.
+The app has **no internet permission** (`tools:node="remove"` on INTERNET, ACCESS_NETWORK_STATE and
+ACCESS_WIFI_STATE, so no library can merge them back). The v1.6 cloud client, API-key screen and cost model are deleted.
+
+- `LocalVision.kt`: Google LiteRT-LM (`com.google.ai.edge.litertlm:litertlm-android`) running a `.litertlm`
+  vision model on the phone (recommended: Gemma 3n E2B int4, ~3 GB, from huggingface.co/google/gemma-3n-E2B-it-litert-lm).
+  One engine per process, GPU with CPU fallback, a fresh conversation per question. The screenshot goes to the
+  app's private cache as a JPEG and is read by the model there.
+- `ModelActivity` ("On-device AI"): import the model file with the system file picker (copied into app-private
+  storage, free-space check, one model kept), test it (load time + reply time), delete it, GPU/CPU, step limit, settle time.
+- `core/vlm/ScreenGrid`: small models can't give pixel coordinates reliably, so each screenshot (540 px wide) gets a
+  labelled grid (9 columns A–I, square cells, name printed in each cell). The model answers `"at":"C7"`, `"to":"F7"`;
+  once a board is calibrated and confirmed it can also use board cells `"r3c4"`. Raw `x`/`y` still accepted.
+  Calibration reports the board as grid cells `from`/`to`; it's saved as `board` in the profile.
+- `InstructionAgent`: same calibrate → confirm → play → learn-rules loop as v1.6, with a step limit and pace limit
+  instead of a money budget.
+
+Honest limits: a phone-sized model takes several seconds to tens of seconds per step, needs ~6 GB+ RAM, and is far
+less capable than large cloud models; expect mistakes. Arm64 only (`abiFilters`).
+
+Verified: `tools/core/VisionTests` (37 checks, scripted model: grid geometry, cell and board-cell actions, scaling,
+refusals, step and pace limits, prompts, calibration, rule learning). Not verifiable here: real on-device inference
+(needs the phone and the model file).
 
 ## Candy Crush board shapes (v1.6)
 `candy/BoardShape` extends the detected grid to every island on the same lattice and finds narrow boards; synthetic test
