@@ -219,6 +219,22 @@ public final class NonoVision {
                 else { cur = new Line(); cur.a0 = cur.a1 = x; cur.from = gy0; cur.to = gy1; vs.add(cur); }
             }
         }
+        // Some screens (e.g. Challenge mode) draw the left or right border grey with a shadow
+        // instead of black. The black horizontal borders still span the whole board, so if they
+        // reach well past the outermost black vertical line, the board edge is where they end.
+        int edgeGap = Math.max(6, w / 60);
+        if (vs.isEmpty() || vs.get(0).a0 - gx0 > edgeGap) {
+            Line l = new Line();
+            l.a0 = l.a1 = edgeLine(f, gx0, gy0, gy1);
+            l.from = gy0; l.to = gy1;
+            vs.add(0, l);
+        }
+        if (vs.get(vs.size() - 1).a1 < gx1 - 1 - edgeGap) {
+            Line l = new Line();
+            l.a0 = l.a1 = edgeLine(f, gx1 - 1, gy0, gy1);
+            l.from = gy0; l.to = gy1;
+            vs.add(l);
+        }
         if (vs.size() < 2) { lastNote = "no grid (no vertical border)"; return null; }
 
         Grid g = new Grid();
@@ -237,6 +253,18 @@ public final class NonoVision {
         if (g.cell < 12) { lastNote = "cells too small (" + g.cell + "px)"; return null; }
         lastNote = "grid " + g;
         return g;
+    }
+
+    /** The darkest column within a few pixels of x over [y0, y1] (a grey board edge). */
+    private static int edgeLine(Frame f, int x, int y0, int y1) {
+        int best = x;
+        long bestSum = Long.MAX_VALUE;
+        for (int xx = Math.max(0, x - 4); xx <= Math.min(f.w - 1, x + 4); xx++) {
+            long sum = 0;
+            for (int y = y0; y <= y1; y += 2) sum += lum(f.px[y * f.w + xx]);
+            if (sum < bestSum) { bestSum = sum; best = xx; }
+        }
+        return best;
     }
 
     /**
@@ -411,9 +439,20 @@ public final class NonoVision {
             }
             if (any) { top = y; gap = 0; } else if (++gap > maxGap) break;
         }
-        int left = g.left - 3;
+        // Right edge of the row-clue area. Some screens (Challenge mode) put a grey shadow strip
+        // along the board's left edge; it runs the full board height, which digits never do, so skip it.
+        int rowRight = g.left - 3;
+        int maxSkip = Math.round(g.cell * 0.6f);
+        while (rowRight > 0 && g.left - 3 - rowRight < maxSkip) {
+            int cnt = 0, tot = 0;
+            for (int y = g.top; y <= g.bottom; y += 2) { tot++; if (ink(f.px[y * w + rowRight])) cnt++; }
+            if (cnt < tot * 0.9f) break;
+            rowRight--;
+        }
+        rowRight -= 2;
+        int left = rowRight;
         gap = 0;
-        for (int x = g.left - 3; x >= 0; x--) {
+        for (int x = rowRight; x >= 0; x--) {
             boolean any = false;
             for (int r = 0; r < g.rows && !any; r++) {
                 int y0 = Math.round(g.rowY0[r] + g.cell * 0.1f), y1 = Math.round(g.rowY1[r] - g.cell * 0.1f);
@@ -438,17 +477,17 @@ public final class NonoVision {
         }
         for (int r = 0; r < g.rows; r++) {
             int y0 = Math.round(g.rowY0[r] + g.cell * 0.08f), y1 = Math.round(g.rowY1[r] - g.cell * 0.08f);
-            if (frozenTab(f, Math.max(left, g.left - (int) (g.cell * 1.6f)), g.left - 4, y0, y1)) {
+            if (frozenTab(f, Math.max(left, rowRight - (int) (g.cell * 1.6f)), rowRight - 1, y0, y1)) {
                 out.rowClues[r] = null;
                 out.frozen++;
                 continue;
             }
             List<Integer> nums = new ArrayList<>();
             boolean[] grey = {false};
-            List<int[]> lines = inkRuns(f, left, g.left - 3, y0, y1, false);
+            List<int[]> lines = inkRuns(f, left, rowRight, y0, y1, false);
             if (!lines.isEmpty()) {
                 int ly0 = lines.get(0)[0], ly1 = lines.get(lines.size() - 1)[1];
-                nums.addAll(readNumbers(f, left, g.left - 3, ly0, ly1, out, "row " + (r + 1), grey));
+                nums.addAll(readNumbers(f, left, rowRight, ly0, ly1, out, "row " + (r + 1), grey));
             }
             out.rowClues[r] = toArray(nums);
             out.rowGrey[r] = grey[0];

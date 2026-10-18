@@ -160,8 +160,16 @@ final class NonogramMode {
      * hidden first so it can't cover the clues. A tiny invisible overlay is flipped to make sure
      * the screen produces a new frame even when nothing else is moving.
      */
+    static final String CAPTURE_OFF = "screen capture is off — open AI GAME BOT, tap Start screen capture (Entire screen), then press Solve again";
+
     private void capture(boolean hidePanel, boolean cluesToo, Sink sink) {
         final int id = ++readId;
+        if (!CaptureService.isRunning()) {
+            NonoVision.Reading off = new NonoVision.Reading();
+            off.error = CAPTURE_OFF;
+            handler.post(() -> { if (id == readId) sink.accept(off); });
+            return;
+        }
         final boolean[] done = {false};
         final View panel = host.panelView();
         if (hidePanel && panel != null) panel.setVisibility(View.INVISIBLE);
@@ -313,6 +321,7 @@ final class NonogramMode {
         state = PLAYING;
         partial = false;
         certain = null;
+        grid = null;
         if (autoRetries < 2) autoRetries = 2;   // a selected row, an animation or a toast can spoil one read
         plan.clear();
         planPos = filled = sinceCheck = checks = swipeFailures = 0;
@@ -333,6 +342,7 @@ final class NonogramMode {
                     + ",\"grid\":" + Recorder.q(String.valueOf(r.grid)) + ",\"clues\":" + Recorder.q(r.grid != null ? r.cluesText() : "") + "}");
             if (r.frame != null && !savedFailFrame) { savedFailFrame = true; CaptureService.saveFrame(r.frame, true); }
         }
+        if (CAPTURE_OFF.equals(r.error)) { autoRetries = 0; end(CAPTURE_OFF); return; }
         if ((r.grid == null || r.error != null) && autoRetries > 0) {
             autoRetries--;
             setInfo((r.grid == null ? "Waiting for the puzzle…" : "Re-reading the clues…") + " (" + (r.error != null ? r.error : "no grid") + ")");
@@ -648,11 +658,18 @@ final class NonogramMode {
     }
 
     private void resume() {
+        if (!CaptureService.isRunning()) { setInfo("Can't resume: " + CAPTURE_OFF); toast("Screen capture is off"); return; }
+        if (grid == null) {   // paused before the puzzle was ever read: start over
+            state = IDLE;
+            start();
+            return;
+        }
         state = PLAYING;
         refresh();
         setInfo("Resuming…");
         capture(false, false, r -> {
             if (state != PLAYING) return;
+            if (CAPTURE_OFF.equals(r.error)) { pause(CAPTURE_OFF); return; }
             if (r.grid == null || r.cells == null) { pause("no puzzle on screen"); return; }
             buildPlan(r);
             if (plan.isEmpty()) { done(); return; }
