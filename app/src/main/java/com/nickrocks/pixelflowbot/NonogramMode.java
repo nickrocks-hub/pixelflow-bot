@@ -324,9 +324,8 @@ final class NonogramMode {
         autoRetries = 0;
         if (r.grid == null) { end("no puzzle on screen (" + r.error + ")"); return; }
         if (r.error != null) { end(r.error); showOverlay(r.grid, null, r, 5000); return; }
-        int[] pr = host.panelRect();
-        if (pr != null && pr[0] < r.grid.right && pr[2] > r.grid.left && pr[1] < r.grid.bottom && pr[3] > r.grid.top) {
-            end("the panel is covering the puzzle — drag it above or below the grid, then Solve again");
+        if (panelInTheWay(r)) {
+            arrangePanel(r, 0);
             return;
         }
         grid = r.grid;
@@ -337,6 +336,59 @@ final class NonogramMode {
             NonoSolver.Result s = new NonoSolver().solve(r.rowClues, r.colClues, null, 8000);
             handler.post(() -> onSolved(r, s));
         });
+    }
+
+    /** True if the panel covers any grid cell or the fill/cross switch. */
+    private boolean panelInTheWay(NonoVision.Reading r) {
+        int[] pr = host.panelRect();
+        if (pr == null || r.grid == null) return false;
+        int pad = host.dp(6);
+        boolean grid = pr[0] < r.grid.right + pad && pr[2] > r.grid.left - pad && pr[1] < r.grid.bottom + pad && pr[3] > r.grid.top - pad;
+        boolean sw = r.toggleX >= 0 && r.toggleX >= pr[0] - pad && r.toggleX <= pr[2] + pad
+                && r.toggleY >= pr[1] - r.grid.cell && r.toggleY <= pr[3] + r.grid.cell;
+        return grid || sw;
+    }
+
+    /**
+     * Folds the panel to a compact strip and parks it where it can't block a tap: under the
+     * fill/cross switch if there's room, otherwise above the grid (over the clues is fine: clues
+     * are read with the panel hidden).
+     */
+    private void arrangePanel(NonoVision.Reading r, int attempt) {
+        setCompact(true);
+        handler.postDelayed(() -> {
+            if (state != PLAYING) return;
+            if (attempt == 0 && !panelInTheWay(r)) { onFirstRead(r); return; }   // compact was enough
+            View panel = host.panelView();
+            int h = panel != null ? panel.getHeight() : 0;
+            int screenH = r.frameH > 0 ? r.frameH : svc.getResources().getDisplayMetrics().heightPixels;
+            int gap = host.dp(8);
+            int belowTop = Math.max(r.grid.bottom, r.toggleY > 0 ? Math.round(r.toggleY + r.grid.cell * 0.7f) : r.grid.bottom) + gap;
+            int aboveTop = r.grid.top - h - gap;
+            if (attempt == 0 && belowTop + h <= screenH - gap) host.movePanel(belowTop);
+            else if (aboveTop >= 0) host.movePanel(Math.max(0, aboveTop));
+            else if (belowTop + h <= screenH) host.movePanel(belowTop);
+            handler.postDelayed(() -> {
+                if (state != PLAYING) return;
+                if (!panelInTheWay(r)) { onFirstRead(r); return; }
+                if (attempt < 1) { arrangePanel(r, attempt + 1); return; }
+                end("no free space for the panel on this screen — drag it off the puzzle, then Solve again");
+            }, 250);
+        }, 150);
+    }
+
+    /** Compact = only the status line and Solve/Pause/STOP while working. */
+    void setCompact(boolean on) {
+        host.setCompact(on);
+        View row2 = box.getChildAt(2);
+        if (row2 != null) row2.setVisibility(on ? View.GONE : View.VISIBLE);
+        info.setMaxLines(on ? 2 : 12);
+    }
+
+    /** Before pressing Next Level: the button is low on the screen, so park the panel at the top. */
+    void parkForNextLevel() {
+        setCompact(true);
+        host.movePanel(host.dp(4));
     }
 
     private void onSolved(NonoVision.Reading r, NonoSolver.Result s) {
@@ -545,6 +597,7 @@ final class NonogramMode {
         if (state != IDLE) log("{\"event\":\"end\",\"why\":" + Recorder.q(why) + "}");
         state = IDLE;
         readId++;
+        setCompact(false);
         refresh();
         setInfo("Stopped: " + why);
     }

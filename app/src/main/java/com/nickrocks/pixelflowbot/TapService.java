@@ -543,6 +543,15 @@ public class TapService extends AccessibilityService {
     // ---------- Stop ----------
 
     /** Stops auto-play and capture, removes the panel and turns this service off. */
+    /** Moves the panel so its top edge is at screen y (used to keep it off a game's board). */
+    private void movePanelTo(int y) {
+        if (panel == null || panelParams == null) return;
+        int[] loc = new int[2];
+        panel.getLocationOnScreen(loc);
+        panelParams.y += y - loc[1];
+        try { wm.updateViewLayout(panel, panelParams); } catch (Exception ignored) { }
+    }
+
     /** Message from the panel's auto-next helper, shown in the Pixel Flow info line. */
     private void showNote(String msg) {
         autoLine = msg;

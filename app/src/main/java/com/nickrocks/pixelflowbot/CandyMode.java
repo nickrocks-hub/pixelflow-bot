@@ -71,6 +71,7 @@ public final class CandyMode {
     private NonogramMode nono;
     private AutoNext next;
     private Button nextToggle, nextTeach;
+    private View modeRow, nextRow;
     private int levelsDone;
     private boolean dead;
     private String gamePkg;
@@ -239,6 +240,8 @@ public final class CandyMode {
             say("Forgot the taught next-level buttons for " + gameName(this.game) + ".");
         }));
         this.panel.addView(nextRow, 2);
+        this.modeRow = linearLayout;
+        this.nextRow = nextRow;
         this.candyBox = new LinearLayout(this.svc);
         this.candyBox.setOrientation(1);
         LinearLayout linearLayout2 = new LinearLayout(this.svc);
@@ -412,6 +415,23 @@ public final class CandyMode {
         }
     }
 
+    /** Hides the game switch and next-level rows while a bot is working. */
+    void setCompact(boolean on) {
+        if (this.modeRow != null) this.modeRow.setVisibility(on ? View.GONE : View.VISIBLE);
+        if (this.nextRow != null) this.nextRow.setVisibility(on ? View.GONE : View.VISIBLE);
+    }
+
+    /** Moves the floating panel's top edge to screen y. */
+    void movePanel(int y) {
+        try {
+            Method m = TapService.class.getDeclaredMethod("movePanelTo", Integer.TYPE);
+            m.setAccessible(true);
+            m.invoke(this.svc, y);
+        } catch (Throwable th) {
+            Log.w(TAG, "move panel failed", th);
+        }
+    }
+
     void cancelNext() { if (this.next != null) this.next.cancel(); }
 
     static void cancelAutoNext() { if (current != null) current.cancelNext(); }
@@ -458,6 +478,7 @@ public final class CandyMode {
     void nonogramSolved() {
         if (this.nono == null || !this.next.enabled("nonogram") || !"nonogram".equals(this.game)) return;
         this.levelsDone++;
+        this.nono.parkForNextLevel();
         final com.nickrocks.pixelflowbot.nono.NonoVision v = new com.nickrocks.pixelflowbot.nono.NonoVision();
         this.next.run("nonogram", com.nickrocks.pixelflowbot.nono.NextButton::find,
                 f -> {
@@ -466,7 +487,10 @@ public final class CandyMode {
                 },
                 90_000, this::say,
                 () -> this.nono.autoStart(),
-                why -> say("Auto-next stopped: " + why));
+                why -> {
+                    this.nono.setCompact(false);
+                    say("Auto-next stopped: " + why);
+                });
     }
 
     View panelView() { return this.panel; }

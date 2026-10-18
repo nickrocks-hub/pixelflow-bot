@@ -46,6 +46,7 @@ public final class NonoVision {
         public int redCells;                     // cells showing the game's red "mistake" mark
         public String error;                     // non-null when the frame couldn't be read
         public long ms;
+        public int frameW, frameH;
 
         public int cell(int r, int c) { return cells[r * grid.cols + c]; }
 
@@ -104,6 +105,7 @@ public final class NonoVision {
     public Reading read(Frame f) {
         long t0 = System.currentTimeMillis();
         Reading out = new Reading();
+        out.frameW = f.w; out.frameH = f.h;
         try {
             Grid g = findGrid(f);
             if (g == null) { out.error = lastNote; return out; }
@@ -125,6 +127,7 @@ public final class NonoVision {
     public Reading readBoard(Frame f) {
         long t0 = System.currentTimeMillis();
         Reading out = new Reading();
+        out.frameW = f.w; out.frameH = f.h;
         try {
             Grid g = findGrid(f);
             if (g == null) { out.error = lastNote; return out; }
