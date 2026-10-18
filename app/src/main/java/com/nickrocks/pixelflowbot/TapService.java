@@ -125,43 +125,58 @@ public class TapService extends AccessibilityService {
     private void showPanel() {
         panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
-        int pad = dp(6);
-        panel.setPadding(pad, pad, pad, pad);
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(0xE6202124);
-        bg.setCornerRadius(dp(12));
+        int pad = dp(10);
+        panel.setPadding(pad, dp(8), pad, pad);
+        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[]{Ui.PANEL_TOP, Ui.PANEL_BOTTOM});
+        bg.setCornerRadius(dp(20));
+        bg.setStroke(dp(1), Ui.PANEL_STROKE);
         panel.setBackground(bg);
+        panel.setElevation(dp(8));
 
+        // Child 0 (always visible, also the drag handle): brand line + live status.
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.VERTICAL);
+        TextView brand = new TextView(this);
+        brand.setText("⬢ PIXELFLOW BOT");
+        brand.setTextColor(Ui.NEON);
+        brand.setTextSize(10);
+        brand.setTypeface(Ui.BLACK);
+        brand.setLetterSpacing(0.18f);
+        head.addView(brand);
         status = new TextView(this);
-        status.setTextColor(Color.WHITE);
-        status.setTextSize(11);
-        panel.addView(status);
+        status.setTextColor(Ui.TEXT);
+        status.setTextSize(10.5f);
+        status.setTypeface(Ui.MONO);
+        status.setPadding(0, dp(2), 0, dp(2));
+        head.addView(status);
+        panel.addView(head);
 
         LinearLayout controls = new LinearLayout(this);
-        startButton = makeButton("▶ Start", 0xFF188038, v -> startAuto());
-        pauseButton = makeButton("⏸ Pause", 0xFF5F6368, v -> togglePause());
+        startButton = makeButton("▶ Start", Ui.ACCENT, v -> startAuto());
+        pauseButton = makeButton("⏸ Pause", Ui.MUTED, v -> togglePause());
         controls.addView(startButton);
         controls.addView(pauseButton);
-        controls.addView(makeButton("■ STOP", 0xFFD93025, v -> stopAll()));
+        controls.addView(makeButton("■ STOP", Ui.DANGER, v -> stopAll()));
         panel.addView(controls);
 
         manualRows = new LinearLayout(this);
         manualRows.setOrientation(LinearLayout.VERTICAL);
         reading = new TextView(this);
-        reading.setTextColor(0xFFB6E3FF);
+        reading.setTextColor(Ui.TEXT_DIM);
         reading.setTextSize(11);
         reading.setText("Start = auto-play this level. Read/Live = just watch.");
         reading.setPadding(0, dp(4), 0, 0);
         manualRows.addView(reading);
         LinearLayout row1 = new LinearLayout(this);
-        row1.addView(makeButton("Read", 0xFF1A73E8, v -> readOnce()));
-        liveButton = makeButton("Live: off", 0xFF5F6368, v -> toggleLive());
+        row1.addView(makeButton("Read", Ui.INFO, v -> readOnce()));
+        liveButton = makeButton("Live: off", Ui.MUTED, v -> toggleLive());
         row1.addView(liveButton);
-        row1.addView(makeButton("Save frame", 0xFF5F6368, v -> saveFrame()));
+        row1.addView(makeButton("Save frame", Ui.MUTED, v -> saveFrame()));
         manualRows.addView(row1);
         LinearLayout row2 = new LinearLayout(this);
-        row2.addView(makeButton("Test tap", 0xFF5F6368, v -> testTap()));
-        row2.addView(makeButton("Recalibrate", 0xFF5F6368, v -> {
+        row2.addView(makeButton("Test tap", Ui.MUTED, v -> testTap()));
+        row2.addView(makeButton("Recalibrate", Ui.MUTED, v -> {
             tracker.reset();
             toast("Board will be re-measured on the next read");
         }));
@@ -181,7 +196,7 @@ public class TapService extends AccessibilityService {
         panelParams.x = dp(4);
         panelParams.y = dp(4);
 
-        status.setOnTouchListener(new View.OnTouchListener() {
+        head.setOnTouchListener(new View.OnTouchListener() {
             float downX, downY; int startX, startY;
             @Override
             public boolean onTouch(View v, MotionEvent e) {
@@ -201,6 +216,8 @@ public class TapService extends AccessibilityService {
         });
 
         wm.addView(panel, panelParams);
+        // Extra games (Candy Crush, Nonogram) add themselves to the panel; Pixel Flow is unaffected if they fail.
+        CandyMode.attach(this);
     }
 
     private void updateButtons() {
@@ -218,15 +235,14 @@ public class TapService extends AccessibilityService {
         b.setTextColor(Color.WHITE);
         b.setTextSize(12);
         b.setAllCaps(false);
-        GradientDrawable d = new GradientDrawable();
-        d.setColor(color);
-        d.setCornerRadius(dp(8));
-        b.setBackground(d);
+        b.setTypeface(Ui.MEDIUM);
+        b.setBackground(Ui.button(color, dp(14)));
+        b.setStateListAnimator(null);
         b.setMinWidth(0);
         b.setMinimumWidth(0);
         b.setMinHeight(0);
         b.setMinimumHeight(0);
-        b.setPadding(dp(10), dp(5), dp(10), dp(5));
+        b.setPadding(dp(12), dp(6), dp(12), dp(6));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         lp.setMargins(dp(3), dp(4), dp(3), 0);
