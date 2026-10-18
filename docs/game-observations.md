@@ -18,7 +18,7 @@ Characters: same colors incl. black (Level 25). Shot counts seen: 1 to 50.
 ## Rules
 - Confirmed: tapping a character sends it onto the belt; it shoots cubes of its own color on the board edge facing it, and its number counts down.
 - Confirmed (user): belt holds up to 5 characters.
-- Confirmed (user): you lose when all 5 waiting slots are full.
+- Confirmed (user + Level 25 recording): you lose when all 5 waiting slots are full.
 - Confirmed (user): a character in a waiting slot can be tapped to send it around again.
 - Confirmed (recording): level is won when the board is cleared, even with characters still in waiting slots.
 - Hypothesis: "x/5" shows free belt spaces (it reads 5/5 with an empty belt and drops as characters board). User described it as the count on the board; verify.
@@ -29,6 +29,10 @@ Characters: same colors incl. black (Level 25). Shot counts seen: 1 to 50.
 - Win: "LEVEL N COMPLETED!" with green "Continue" and an ad button "80 (video icon)".
 - Map screen: "Play", "ADS / NO ADS" purchase button, coin "+".
 - Loading screen: "PIXEL FLOW / Loading".
+- Fail, step 1 (confirmed, Level 25): when all 5 waiting slots fill, their outlines turn red and an "OUT OF SPACE!" popup appears:
+  "900 (coins)" continue button, a "Fail Offer" real-money purchase (CAD 8.29), a red X to close, and "Hold to See the Game".
+- Fail, step 2: after X, "Level N / You Failed" with an infinite-lives heart and a "Try Again" button. Then Loading, and the level restarts.
+- Bot policy: stop on any popup. Never tap coin, purchase or ad buttons. Auto-retry (X then Try Again) only if the user enables it later.
 
 ## Board reader status
 - tools/board_reader.py: calibrates grid once per level from the full board (frequency fit of cube spacing), then reads every cube color.
