@@ -25,3 +25,11 @@ Desktop checks: `tools/nono/NonoProbe.java` (read screenshots), `MakeTemplates.j
   fingerprint of a 36%x6% patch around it; tapped only after matching on two looks in a row
   (mean diff < 16, 90th percentile < 40). Tested on the Nonogram recording: a fingerprint taught on one
   Level Completed frame matched all 9 clean ones and none of the popups or other screens.
+
+## Frozen clues (v0.9.2)
+- Some levels hide clues under ice: the tab turns ice-blue (219-231, 247-249, 251) with a cyan snowflake
+  and no number (seen on Level 8: columns 3 and 7, rows 8 and 10). The snowflake used to be misread as
+  an 8 or 7.
+- The reader now marks those lines as unknown; the solver fills only cells that are the same in every
+  picture that fits the visible clues (line logic + what-if probing), then re-reads in case the ice melted.
+  On Level 8 that's 84 of 100 cells; the other 16 depend on the hidden clues.

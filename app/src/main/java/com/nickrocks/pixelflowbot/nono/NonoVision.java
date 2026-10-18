@@ -38,6 +38,7 @@ public final class NonoVision {
         public Grid grid;
         public int[][] rowClues, colClues;
         public boolean[] rowGrey, colGrey;      // clue drawn grey = that line is already satisfied
+        public int frozen;                       // lines whose clue is hidden under ice (clue = null)
         public int[] cells;                     // rows*cols, EMPTY/FILLED/CROSS
         public float worstDigit = 0f;           // worst digit match distance (lower is better)
         public String worstWhere = "";
@@ -54,9 +55,9 @@ public final class NonoVision {
 
         public String cluesText() {
             StringBuilder sb = new StringBuilder("cols:");
-            for (int[] c : colClues) sb.append(' ').append(join(c, "."));
+            for (int[] c : colClues) sb.append(' ').append(c == null ? "❄" : join(c, "."));
             sb.append("\nrows:");
-            for (int[] r : rowClues) sb.append(' ').append(join(r, "."));
+            for (int[] r : rowClues) sb.append(' ').append(r == null ? "❄" : join(r, "."));
             return sb.toString();
         }
 
@@ -390,6 +391,11 @@ public final class NonoVision {
         }
         for (int c = 0; c < g.cols; c++) {
             int x0 = Math.round(g.colX0[c] + g.cell * 0.08f), x1 = Math.round(g.colX1[c] - g.cell * 0.08f);
+            if (frozenTab(f, x0, x1, Math.max(top, g.top - (int) (g.cell * 1.6f)), g.top - 4)) {
+                out.colClues[c] = null;   // frozen: clue hidden
+                out.frozen++;
+                continue;
+            }
             List<Integer> nums = new ArrayList<>();
             boolean[] grey = {false};
             for (int[] line : inkRuns(f, x0, x1, top, g.top - 3, false)) {
@@ -400,6 +406,11 @@ public final class NonoVision {
         }
         for (int r = 0; r < g.rows; r++) {
             int y0 = Math.round(g.rowY0[r] + g.cell * 0.08f), y1 = Math.round(g.rowY1[r] - g.cell * 0.08f);
+            if (frozenTab(f, Math.max(left, g.left - (int) (g.cell * 1.6f)), g.left - 4, y0, y1)) {
+                out.rowClues[r] = null;
+                out.frozen++;
+                continue;
+            }
             List<Integer> nums = new ArrayList<>();
             boolean[] grey = {false};
             List<int[]> lines = inkRuns(f, left, g.left - 3, y0, y1, false);
@@ -613,6 +624,23 @@ public final class NonoVision {
 
     static boolean match(int p, int pass) { return pass == 0 ? isIconNavy(p) : isIconGrey(p); }
 
+    /**
+     * Frozen clue tab (ice-blue (219-231, 247-249, 251) with a snowflake, number hidden), as
+     * opposed to the normal lavender tab (234,238,248) or a white selected one.
+     */
+    static boolean frozenTab(Frame f, int x0, int x1, int y0, int y1) {
+        int ice = 0, n = 0;
+        for (int y = Math.max(0, y0); y < Math.min(f.h, y1); y += 2) {
+            for (int x = Math.max(0, x0); x < Math.min(f.w, x1); x += 2) {
+                int p = f.px[y * f.w + x];
+                int r = (p >> 16) & 0xff, g = (p >> 8) & 0xff, b = p & 0xff;
+                n++;
+                if (b >= 240 && g >= 235 && g - r >= 12 && r >= 190) ice++;
+            }
+        }
+        return n > 0 && ice > n * 0.3f;
+    }
+
     // ---------------- sanity ----------------
 
     static String checkClues(Reading out) {
@@ -621,6 +649,7 @@ public final class NonoVision {
         if (out.worstDigit > MAX_DIGIT_DIST) return "unclear clue digit at " + out.worstWhere + " (something covering the clues?)";
         long rs = 0, cs = 0;
         for (int r = 0; r < g.rows; r++) {
+            if (out.rowClues[r] == null) continue;
             int need = 0;
             for (int v : out.rowClues[r]) need += v;
             need += Math.max(0, out.rowClues[r].length - 1);
@@ -628,13 +657,14 @@ public final class NonoVision {
             for (int v : out.rowClues[r]) rs += v;
         }
         for (int c = 0; c < g.cols; c++) {
+            if (out.colClues[c] == null) continue;
             int need = 0;
             for (int v : out.colClues[c]) need += v;
             need += Math.max(0, out.colClues[c].length - 1);
             if (need > g.rows) return "column " + (c + 1) + " clue " + join(out.colClues[c], " ") + " doesn't fit — misread?";
             for (int v : out.colClues[c]) cs += v;
         }
-        if (rs != cs) return "row clues add to " + rs + " but column clues add to " + cs + " — a number was misread";
+        if (out.frozen == 0 && rs != cs) return "row clues add to " + rs + " but column clues add to " + cs + " — a number was misread";
         if (rs == 0) return "no clue numbers found";
         return null;
     }

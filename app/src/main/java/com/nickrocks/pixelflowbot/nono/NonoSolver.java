@@ -10,7 +10,8 @@ import java.util.ArrayDeque;
 public final class NonoSolver {
     public static final int UNKNOWN = -1, EMPTY = 0, FILLED = 1;
 
-    public enum Status { SOLVED, MULTIPLE, CONTRADICTION, TIMEOUT }
+    /** PARTIAL: some clues are hidden (frozen); grid holds only the cells that are certain. */
+    public enum Status { SOLVED, MULTIPLE, CONTRADICTION, TIMEOUT, PARTIAL }
 
     public static final class Result {
         public Status status;
@@ -34,6 +35,10 @@ public final class NonoSolver {
     }
 
     public Result solve(int[][] rowClues, int[][] colClues, int[] start, long timeLimitMs) {
+        boolean hidden = false;
+        for (int[] c : rowClues) if (c == null) hidden = true;
+        for (int[] c : colClues) if (c == null) hidden = true;
+        if (hidden) return solveCertain(rowClues, colClues, start, timeLimitMs);
         long t0 = System.currentTimeMillis();
         this.rows = rowClues.length;
         this.cols = colClues.length;
@@ -60,6 +65,68 @@ public final class NonoSolver {
         if (n == 0) { res.status = Status.CONTRADICTION; res.note = "the clues have no solution (misread?)"; }
         else if (n > 1) { res.status = Status.MULTIPLE; res.note = "more than one solution"; res.grid = found[0]; }
         else { res.status = Status.SOLVED; res.grid = found[0]; res.note = guesses == 0 ? "logic only" : guesses + " guesses"; }
+        return res;
+    }
+
+    /**
+     * With hidden clues there may be many pictures that fit what's visible. Finds the cells that
+     * are the same in ALL of them (line logic plus "what if" probing), which are therefore also
+     * right in the real picture. If the visible clues happen to allow just one picture, SOLVED.
+     */
+    public Result solveCertain(int[][] rowClues, int[][] colClues, int[] start, long timeLimitMs) {
+        long t0 = System.currentTimeMillis();
+        this.rows = rowClues.length;
+        this.cols = colClues.length;
+        this.rowClues = rowClues;
+        this.colClues = colClues;
+        this.deadline = t0 + timeLimitMs;
+        this.guesses = 0;
+        Result res = new Result();
+        int[] g = new int[rows * cols];
+        java.util.Arrays.fill(g, UNKNOWN);
+        if (start != null) System.arraycopy(start, 0, g, 0, g.length);
+        if (!propagate(g)) {
+            res.status = Status.CONTRADICTION;
+            res.note = "the visible clues have no solution (misread?)";
+            res.ms = System.currentTimeMillis() - t0;
+            return res;
+        }
+        boolean changed = true;
+        while (changed && System.currentTimeMillis() < deadline) {
+            changed = false;
+            for (int i = 0; i < g.length; i++) {
+                if (g[i] != UNKNOWN) continue;
+                int[] a = g.clone();
+                a[i] = FILLED;
+                boolean canFill = propagate(a);
+                int[] b = g.clone();
+                b[i] = EMPTY;
+                boolean canEmpty = propagate(b);
+                if (!canFill && !canEmpty) {
+                    res.status = Status.CONTRADICTION;
+                    res.note = "the visible clues have no solution (misread?)";
+                    res.ms = System.currentTimeMillis() - t0;
+                    return res;
+                }
+                if (!canFill) { g = b; changed = true; }
+                else if (!canEmpty) { g = a; changed = true; }
+            }
+        }
+        int unknown = 0;
+        for (int v : g) if (v == UNKNOWN) unknown++;
+        // Maybe the visible clues already pin down everything.
+        if (unknown > 0 && unknown <= 64) {
+            try {
+                int[][] found = new int[2][];
+                this.deadline = Math.min(deadline, System.currentTimeMillis() + 1500);
+                int n = search(g.clone(), found, 0);
+                if (n == 1) { g = found[0]; unknown = 0; }
+            } catch (Timeout ignored) { }
+        }
+        res.grid = g;
+        res.ms = System.currentTimeMillis() - t0;
+        res.status = unknown == 0 ? Status.SOLVED : Status.PARTIAL;
+        res.note = unknown == 0 ? "solved despite hidden clues" : unknown + " cells depend on hidden clues";
         return res;
     }
 
@@ -126,6 +193,7 @@ public final class NonoSolver {
      * filled in, or null if no placement fits.
      */
     static int[] solveLine(int[] clue, int[] known, int n) {
+        if (clue == null) return java.util.Arrays.copyOf(known, n);   // hidden clue: anything goes
         int k = clue.length;
         // zeros[i] = number of known-empty cells in [0, i)
         int[] zeros = new int[n + 1];

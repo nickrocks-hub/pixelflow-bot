@@ -69,6 +69,8 @@ final class NonogramMode {
     private final List<int[]> plan = new ArrayList<>();   // {row, c0, c1} cells to fill, left to right
     private int planPos, filled, sinceCheck, checks, swipeFailures;
     private long startedAt;
+    private boolean partial;        // some clues are frozen: solution has UNKNOWN cells
+    private int[] certain;          // cells proven so far on this puzzle
     private int baseRed;
     private int autoRetries;
 
@@ -232,7 +234,7 @@ final class NonogramMode {
                     sb.append("Solver: ").append(s.status).append(" (").append(s.note).append(", ").append(s.ms).append(" ms)\n");
                     sb.append("Mode switch: ").append(r.toggle == 1 ? "fill ✓" : r.toggle == 0 ? "cross (bot will switch it)" : "not found");
                     setInfo(sb.toString());
-                    showOverlay(r.grid, s.status == NonoSolver.Status.SOLVED ? s.grid : null, r, 4000);
+                    showOverlay(r.grid, s.status == NonoSolver.Status.SOLVED || s.status == NonoSolver.Status.PARTIAL ? s.grid : null, r, 4000);
                 });
             });
         });
@@ -247,6 +249,10 @@ final class NonogramMode {
         frame.setColor(Ui.ACCENT);
         final Paint dot = new Paint(Paint.ANTI_ALIAS_FLAG);
         dot.setColor(0xCC22D3EE);
+        final Paint ring = new Paint(Paint.ANTI_ALIAS_FLAG);
+        ring.setStyle(Paint.Style.STROKE);
+        ring.setStrokeWidth(host.dp(2));
+        ring.setColor(0xEEF59E0B);
         final Paint bad = new Paint(Paint.ANTI_ALIAS_FLAG);
         bad.setColor(0xCCFF4D6D);
         View v = new View(svc) {
@@ -262,6 +268,7 @@ final class NonogramMode {
                         float x = g.cx(col) - loc[0], y = g.cy(row) - loc[1];
                         if (want == NonoSolver.FILLED && have == NonoVision.EMPTY) c.drawCircle(x, y, g.cell * 0.16f, dot);
                         if (want == NonoSolver.EMPTY && have == NonoVision.FILLED) c.drawCircle(x, y, g.cell * 0.22f, bad);
+                        if (want == NonoSolver.UNKNOWN && have == NonoVision.EMPTY) c.drawCircle(x, y, g.cell * 0.2f, ring);
                     }
                 }
             }
@@ -304,6 +311,8 @@ final class NonogramMode {
         gamePkg = pkg;
         removeOverlay();
         state = PLAYING;
+        partial = false;
+        certain = null;
         if (autoRetries < 2) autoRetries = 2;   // a selected row, an animation or a toast can spoil one read
         plan.clear();
         planPos = filled = sinceCheck = checks = swipeFailures = 0;
@@ -340,7 +349,13 @@ final class NonogramMode {
         log("{\"event\":\"read\",\"grid\":" + Recorder.q(grid.toString()) + ",\"clues\":" + Recorder.q(r.cluesText()) + "}");
         setInfo("Grid " + grid + " · solving…");
         worker.execute(() -> {
-            NonoSolver.Result s = new NonoSolver().solve(r.rowClues, r.colClues, null, 8000);
+            // Filled cells on the board are always right (the game rejects wrong fills), and cells
+            // proven in an earlier round stay proven.
+            int[] start = new int[r.grid.rows * r.grid.cols];
+            java.util.Arrays.fill(start, NonoSolver.UNKNOWN);
+            if (certain != null && certain.length == start.length) System.arraycopy(certain, 0, start, 0, start.length);
+            for (int i = 0; i < start.length; i++) if (r.cells[i] == NonoVision.FILLED) start[i] = NonoSolver.FILLED;
+            NonoSolver.Result s = new NonoSolver().solve(r.rowClues, r.colClues, start, 8000);
             handler.post(() -> onSolved(r, s));
         });
     }
@@ -414,13 +429,15 @@ final class NonogramMode {
     private void onSolved(NonoVision.Reading r, NonoSolver.Result s) {
         if (state != PLAYING) return;
         log("{\"event\":\"solve\",\"status\":\"" + s.status + "\",\"ms\":" + s.ms + ",\"guesses\":" + s.guesses + "}");
-        if (s.status != NonoSolver.Status.SOLVED) {
+        if (s.status != NonoSolver.Status.SOLVED && s.status != NonoSolver.Status.PARTIAL) {
             end(s.status == NonoSolver.Status.MULTIPLE ? "the clues allow more than one answer — probably a misread, so not risking a heart"
                     : s.status == NonoSolver.Status.TIMEOUT ? "puzzle too hard to prove in time"
                     : "the clues as read have no solution — a digit was probably misread");
             return;
         }
         solution = s.grid;
+        partial = s.status == NonoSolver.Status.PARTIAL;
+        certain = s.grid.clone();
         // The board must agree with the solution before we touch anything.
         for (int row = 0; row < grid.rows; row++) {
             for (int col = 0; col < grid.cols; col++) {
@@ -438,7 +455,16 @@ final class NonogramMode {
             }
         }
         buildPlan(r);
+        if (plan.isEmpty() && partial) {
+            int unknown = 0;
+            for (int v : solution) if (v == NonoSolver.UNKNOWN) unknown++;
+            showOverlay(grid, solution, r, 8000);
+            end("❄ frozen clues: the last " + unknown + " cells (amber rings) can't be proven from the visible clues. "
+                    + "Fill one of them yourself (or use a hint), then press Solve to finish.");
+            return;
+        }
         if (plan.isEmpty()) { end("nothing left to fill — puzzle already done"); return; }
+        if (partial) setInfo("❄ " + r.frozen + " frozen clue" + (r.frozen > 1 ? "s" : "") + " — filling the cells the visible clues prove…");
         showOverlay(grid, solution, r, 900);
         ensureFillMode(r, 0);
     }
@@ -582,7 +608,21 @@ final class NonogramMode {
         }
     }
 
+    /** Some clues are frozen: after filling every proven cell, look again (ice may have melted). */
+    private void partialRound() {
+        setInfo("Filled every proven cell — checking for melted clues…");
+        handler.postDelayed(() -> {
+            if (state != PLAYING) return;
+            capture(true, true, r -> {
+                if (state != PLAYING) return;
+                if (r.grid == null) { partial = false; done(); return; }   // the level finished
+                onFirstRead(r);
+            });
+        }, 700);
+    }
+
     private void done() {
+        if (partial) { partialRound(); return; }
         long secs = (System.currentTimeMillis() - startedAt) / 1000;
         log("{\"event\":\"solved\",\"secs\":" + secs + "}");
         state = IDLE;
