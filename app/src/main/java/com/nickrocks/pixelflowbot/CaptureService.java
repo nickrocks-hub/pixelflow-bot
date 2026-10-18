@@ -67,6 +67,20 @@ public class CaptureService extends Service {
     public static long getFrameCount() { return frameCount; }
     public static void requestSaveFrame() { saveNextFrame = true; }
 
+    /** Saves an already-captured frame (e.g. one the bot misread) to Pictures/PixelFlowBot, off the main thread. */
+    public static void saveFrame(com.nickrocks.pixelflowbot.vision.Frame f) {
+        CaptureService s = instance;
+        if (s == null || f == null) return;
+        new Thread(() -> {
+            try {
+                Bitmap bmp = Bitmap.createBitmap(f.px, f.w, f.h, Bitmap.Config.ARGB_8888);
+                s.saveBitmap(bmp);
+            } catch (Throwable t) {
+                Log.e(TAG, "saveFrame failed", t);
+            }
+        }, "save-frame").start();
+    }
+
     /** Delivers the next captured frame (on the capture thread). Frames only arrive when the screen changes. */
     public static void requestFrame(java.util.function.Consumer<com.nickrocks.pixelflowbot.vision.Frame> cb) {
         frameRequest = cb;

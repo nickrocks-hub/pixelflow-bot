@@ -218,7 +218,8 @@ final class NonogramMode {
             readBusy = false;
             if (r.grid == null) { setInfo("No puzzle found: " + r.error); return; }
             if (r.error != null) {
-                setInfo("Grid " + r.grid + "\nProblem: " + r.error + "\n" + r.cluesText());
+                saveMisread(r);
+                setInfo("Grid " + r.grid + "\nProblem: " + r.error + "\n" + r.cluesText() + "\nScreenshot saved to Pictures/PixelFlowBot.");
                 showOverlay(r.grid, null, r, 4000);
                 return;
             }
@@ -323,7 +324,12 @@ final class NonogramMode {
         }
         autoRetries = 0;
         if (r.grid == null) { end("no puzzle on screen (" + r.error + ")"); return; }
-        if (r.error != null) { end(r.error); showOverlay(r.grid, null, r, 5000); return; }
+        if (r.error != null) {
+            saveMisread(r);
+            end(r.error + "\nRead: " + r.cluesText() + "\nScreenshot saved to Pictures/PixelFlowBot — send it so the reader can be fixed.");
+            showOverlay(r.grid, null, r, 5000);
+            return;
+        }
         if (panelInTheWay(r)) {
             arrangePanel(r, 0);
             return;
@@ -336,6 +342,13 @@ final class NonogramMode {
             NonoSolver.Result s = new NonoSolver().solve(r.rowClues, r.colClues, null, 8000);
             handler.post(() -> onSolved(r, s));
         });
+    }
+
+    /** Keeps a copy of a frame the reader couldn't make sense of, and logs what it read. */
+    private void saveMisread(NonoVision.Reading r) {
+        log("{\"event\":\"misread\",\"why\":" + Recorder.q(String.valueOf(r.error)) + ",\"grid\":" + Recorder.q(String.valueOf(r.grid))
+                + ",\"clues\":" + Recorder.q(r.cluesText()) + ",\"worstDigit\":" + r.worstDigit + ",\"at\":" + Recorder.q(r.worstWhere) + "}");
+        CaptureService.saveFrame(r.frame);
     }
 
     /** True if the panel covers any grid cell or the fill/cross switch. */

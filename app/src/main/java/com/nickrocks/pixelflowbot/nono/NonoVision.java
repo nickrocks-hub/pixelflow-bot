@@ -43,10 +43,12 @@ public final class NonoVision {
         public String worstWhere = "";
         public float toggleX = -1, toggleY = -1; // centre of the fill (square) icon
         public int toggle = -1;                  // 1 = fill mode on, 0 = cross mode on, -1 = not found
-        public int redCells;                     // cells showing the game's red "mistake" mark
+        public int redCells;
+        public String splitAt;                   // where a number looked split into separate digits                     // cells showing the game's red "mistake" mark
         public String error;                     // non-null when the frame couldn't be read
         public long ms;
         public int frameW, frameH;
+        public Frame frame;                      // the screenshot this was read from (for saving misreads)
 
         public int cell(int r, int c) { return cells[r * grid.cols + c]; }
 
@@ -106,6 +108,7 @@ public final class NonoVision {
         long t0 = System.currentTimeMillis();
         Reading out = new Reading();
         out.frameW = f.w; out.frameH = f.h;
+        out.frame = f;
         try {
             Grid g = findGrid(f);
             if (g == null) { out.error = lastNote; return out; }
@@ -480,7 +483,8 @@ public final class NonoVision {
             m.grey = gr[0];
             if (m.dist > out.worstDigit) { out.worstDigit = m.dist; out.worstWhere = where + " '" + m.digit + "'"; }
             if (m.grey) grey[0] = true;
-            boolean sameNumber = prev != null && (g.x0 - prev.x1 - 1) < h * 0.22f;
+            // Inter: digits of one number sit 0.18-0.21 x height apart; separate numbers ~0.53.
+            boolean sameNumber = prev != null && (g.x0 - prev.x1 - 1) < h * 0.36f;
             if (sameNumber && value >= 0) value = value * 10 + m.digit;
             else {
                 if (value >= 0) nums.add(value);
@@ -489,6 +493,8 @@ public final class NonoVision {
             prev = g;
         }
         if (value >= 0) nums.add(value);
+        // A clue can't contain a lone 0 next to other numbers: that means digits were split.
+        if (nums.size() > 1 && nums.contains(0) && out.splitAt == null) out.splitAt = where;
         return nums;
     }
 
@@ -561,6 +567,7 @@ public final class NonoVision {
 
     static String checkClues(Reading out) {
         Grid g = out.grid;
+        if (out.splitAt != null) return "a two-digit clue looked split at " + out.splitAt + " — misread";
         if (out.worstDigit > MAX_DIGIT_DIST) return "unclear clue digit at " + out.worstWhere + " (something covering the clues?)";
         long rs = 0, cs = 0;
         for (int r = 0; r < g.rows; r++) {
