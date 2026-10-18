@@ -106,7 +106,8 @@ public final class InstructionAgent {
             sb.append("\nYour last steps (oldest first):\n");
             for (String s : history) sb.append("- ").append(s).append('\n');
         }
-        sb.append('\n').append(gridFor(w, h).describe()).append(" Choose the next action. Reply as JSON:\n")
+        sb.append('\n').append(gridFor(w, h).describe())
+                .append(" Choose the next action. Use wait only while the screen is loading or animating; on a game screen, make a move. Reply as JSON:\n")
                 .append("{\"screen\":\"gameplay|menu|level_complete|loss|loading|ad|purchase|login|dialog|other\",")
                 .append("\"observation\":\"what you see and what changed since your last action\",")
                 .append("\"last_action_effect\":\"worked|no_effect|unclear|none\",")
@@ -234,7 +235,8 @@ public final class InstructionAgent {
             d.problem = o.problem;
             return d;
         }
-        String screen = Json.str(m, "screen", "other");
+        String screen = Json.str(m, "screen", "other").trim().toLowerCase(Locale.US).replace(' ', '_');
+        if (screen.contains("game") || screen.equals("playing") || screen.equals("board") || screen.equals("level")) screen = "gameplay";
         o.screen = screenOf(screen);
         d.confidence = (float) clamp(Json.num(m, "confidence", 0), 0, 1);
         o.confidence = d.confidence;

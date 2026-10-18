@@ -226,6 +226,10 @@ public class ProfileActivity extends Activity {
             return "Open a level, then press ▶ Start on the floating panel. It pauses on popups and level ends. For ⟳ Next level, press "
                     + "Teach next once on a level-complete screen and tap the button yourself.";
         }
+        if (Adapters.ARROWS.id.equals(adapterId)) {
+            return "Open a level, then press ▶ Solve on the floating panel (🔍 Read board shows what it sees first). For ⟳ Next level, press "
+                    + "Teach next once on a level-complete screen and tap the button yourself.";
+        }
         return "Open a puzzle, then press ▶ Solve on the floating panel. ⟳ Next level moves on by itself.";
     }
 

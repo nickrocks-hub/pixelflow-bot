@@ -59,6 +59,20 @@ java -cp /tmp/ct NonoProbe tools/nono/samples/*.png  # screen reader on saved fr
 ```
 APK: GitHub Actions `build.yml` (workflow_dispatch on branch `nonogram-mode`).
 
+## v1.8 — arrows puzzle player (com.oakever.arrows, "Amaze Go!")
+
+The on-device AI understood the rules but couldn't trace 50+ tangled arrows, so this game got an exact player.
+- `core/arrows/ArrowsBoard`: ink mask (dark warm pixels) → board band → square lattice (spacing/phase from the
+  stroke projections, least-squares refined; the sparser axis is refit with the other's spacing) → drawn lattice
+  edges → each arrow is a path of edges; the head is the end with arrowhead wings just behind it. An arrow is free
+  when no other arrow occupies a lattice node between its head and the board edge. `plan()` simulates the whole level.
+  Later readings reuse the lattice measured on the full board (sparse boards can't be measured reliably).
+- `ArrowsMode`: read → tap the middle of the first free arrow's head segment → wait → read again; retries while
+  arrows are animating; pauses if a tapped arrow doesn't move (3×), if the board can't be read cleanly, or if the
+  game leaves the front; keeps the panel off the board; level end → taught next-level button.
+- Verified: `tools/arrows/ArrowsProbe` on the user's level 7 screenshot: 53 arrows, one head each, and played out by
+  erasing arrows in plan order, re-read correctly after every tap down to an empty board. Not verified: on a phone.
+
 ## v1.7 — completely offline: on-device AI agent
 
 The app has **no internet permission** (`tools:node="remove"` on INTERNET, ACCESS_NETWORK_STATE and

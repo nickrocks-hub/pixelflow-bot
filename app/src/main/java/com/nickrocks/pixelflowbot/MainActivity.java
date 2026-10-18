@@ -65,7 +65,7 @@ public class MainActivity extends Activity {
         root.addView(step("1", "Tap service", "Lets the bot tap and swipe for you, only after you press Solve/Start. Find AI Game Bot under Accessibility → Installed apps.", tapButton));
         capButton = action("Start screen capture", Ui.INFO, v -> requestCapture());
         root.addView(step("2", "Screen capture", "Lets the bot see the game. Choose \"Entire screen\" when asked. Needed again after every app update.", capButton));
-        root.addView(step("3", "Play", "Tap a game in the library and press ▶ Launch & play. The floating panel switches to that game. Built-in players: Nonogram.com and Candy Crush Saga. Any other game you add is played by the on-device AI from the instructions you write in its profile (import a model once; it runs on the phone, offline).", null));
+        root.addView(step("3", "Play", "Tap a game in the library and press ▶ Launch & play. The floating panel switches to that game. Built-in players: Nonogram.com, Candy Crush Saga and the arrows puzzle (Amaze Go!). Any other game you add is played by the on-device AI from the instructions you write in its profile (import a model once; it runs on the phone, offline).", null));
 
         Button stop = action("■  STOP everything", Ui.DANGER, v -> {
             CaptureService.stop(this);
@@ -112,7 +112,7 @@ public class MainActivity extends Activity {
         TextView t = text("AI GAME BOT", 28, Color.WHITE);
         t.setTypeface(Ui.BLACK);
         titles.addView(t);
-        TextView v = text("v1.7 · plays the games you launch · offline", 12, 0xCCFFFFFF);
+        TextView v = text("v1.8 · plays the games you launch · offline", 12, 0xCCFFFFFF);
         v.setTypeface(Ui.MONO);
         titles.addView(v);
         top.addView(titles);

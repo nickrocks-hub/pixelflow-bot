@@ -34,10 +34,18 @@ public final class Adapters {
                     + "so it plays for strong matches rather than the objective. No learned policy yet. Sessions are logged to "
                     + "Download/AIGameBot but not yet into the experience store.");
 
+    public static final Info ARROWS = new Info("arrows-escape", "Arrows puzzle reader + solver", "com.oakever.arrows",
+            GameProfile.Pace.TURN_BASED,
+            "Reads every arrow on the board (its bends and which end is the head) from the screen, finds the arrows with a clear path "
+                    + "to the edge, taps one, waits for it to leave and reads again until the board is empty; then the next-level button you teach once.",
+            "Exact rule-based player, no AI model. Assumes the classic rules (an arrow leaves along its head's direction if nothing is in the way); "
+                    + "pauses if a tapped arrow doesn't move. Read correctly on a level 7 screenshot (53 arrows); other layouts not seen yet.");
+
     public static List<Info> all() {
         List<Info> l = new ArrayList<>();
         l.add(NONOGRAM_COM);
         l.add(CANDY_CRUSH);
+        l.add(ARROWS);
         return l;
     }
 
@@ -53,10 +61,11 @@ public final class Adapters {
         return null;
     }
 
-    /** Which floating-panel player runs this adapter: "nonogram", "candy", or "none". */
+    /** Which floating-panel player runs this adapter: "nonogram", "candy", "arrows", or "none". */
     public static String panelKey(String adapterId) {
         if (NONOGRAM_COM.id.equals(adapterId)) return "nonogram";
         if (CANDY_CRUSH.id.equals(adapterId)) return "candy";
+        if (ARROWS.id.equals(adapterId)) return "arrows";
         return "none";
     }
 
@@ -86,6 +95,16 @@ public final class Adapters {
         c.pace = GameProfile.Pace.TURN_BASED;
         c.notes = "Player restored from build 17 (field-tested then).";
         l.add(c);
+        GameProfile ar = new GameProfile();
+        ar.id = "arrows-escape";
+        ar.name = "Amaze Go!";
+        ar.kind = GameProfile.Kind.EXTERNAL_APP;
+        ar.packageName = ARROWS.packageName;
+        ar.adapterId = ARROWS.id;
+        ar.support = GameProfile.Support.SUPPORTED;
+        ar.pace = GameProfile.Pace.TURN_BASED;
+        ar.notes = "Built from a level 7 screenshot; reads all 53 arrows and clears the level in simulation.";
+        l.add(ar);
         return l;
     }
 }
