@@ -21,6 +21,11 @@ public final class LinearQ {
     public float alpha = 0.03f;
     public float gamma = 0.1f;
     public long updates;
+    /**
+     * Normalised step (NLMS): divide the step by |φ|² so actions with many active features don't
+     * take huge steps. Off by default (the Nonogram.com model was tuned without it).
+     */
+    public boolean normalize;
 
     public LinearQ(String[] featureNames) {
         this.featureNames = featureNames;
@@ -41,14 +46,20 @@ public final class LinearQ {
         // Clip huge errors so a single odd observation can't wreck the weights.
         if (err > 20) err = 20;
         if (err < -20) err = -20;
-        for (int i = 0; i < w.length && i < t.features.length; i++) w[i] += alpha * err * t.features[i];
+        float step = alpha;
+        if (normalize) {
+            float n2 = 0;
+            for (float v : t.features) n2 += v * v;
+            step = alpha / Math.max(1f, n2);
+        }
+        for (int i = 0; i < w.length && i < t.features.length; i++) w[i] += step * err * t.features[i];
         updates++;
         return err;
     }
 
     public String toJson() {
         return "{\"features\":" + Json.arr(featureNames) + ",\"w\":" + Json.arr(w)
-                + ",\"alpha\":" + alpha + ",\"gamma\":" + gamma + ",\"updates\":" + updates + "}";
+                + ",\"alpha\":" + alpha + ",\"gamma\":" + gamma + ",\"updates\":" + updates + ",\"normalize\":" + normalize + "}";
     }
 
     public static LinearQ fromJson(Map<String, Object> m) {
@@ -61,6 +72,7 @@ public final class LinearQ {
         q.alpha = (float) Json.num(m, "alpha", q.alpha);
         q.gamma = (float) Json.num(m, "gamma", q.gamma);
         q.updates = (long) Json.num(m, "updates", 0);
+        q.normalize = Boolean.TRUE.equals(m.get("normalize"));
         return q;
     }
 

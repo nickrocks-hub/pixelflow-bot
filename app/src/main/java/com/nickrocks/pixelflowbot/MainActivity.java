@@ -61,6 +61,17 @@ public class MainActivity extends Activity {
         root.addView(step("3", "Pick a game", "Use the ◆ game button on the floating panel to switch, open the game, then press Start / Solve.", null));
         root.addView(step("4", "Next level, automatically", "⟳ Next level: ON makes the bot press Continue / Next / Play after each win. Nonogram and Amaze GO work out of the box. For Pixel Flow and Candy Crush, on the first level-complete screen press Teach next and tap the button yourself (and again on any screen that follows). It only presses a taught button when that exact button is showing, so it never taps ads, offers or fail screens.", null));
 
+        root.addView(section("PLAY & TRAIN"));
+        LinearLayout ng = card();
+        TextView ngT = text("▦ Nonogram game", 18, Ui.TEXT);
+        ngT.setTypeface(Ui.BLACK);
+        ng.addView(ngT);
+        TextView ngB = text("A built-in Nonogram you can play by touch (5×5, 10×10, 15×15, unique-solution puzzles from seeds). Watch the constraint-solver baseline or the learning agent play it, train the learner, and compare them on separate evaluation puzzles.", 13, Ui.TEXT_DIM);
+        ngB.setPadding(0, dp(6), 0, dp(10));
+        ng.addView(ngB);
+        ng.addView(action("Play Nonogram", Ui.GAME_NONO, v -> startActivity(new Intent(this, NonogramActivity.class))));
+        root.addView(ng);
+
         root.addView(section("LEARNING AGENT"));
         LinearLayout ai = card();
         TextView aiT = text("🧠 AI Lab", 18, Ui.TEXT);
