@@ -10,23 +10,40 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Pinned image: ships with the Android SDK preinstalled at $ANDROID_HOME.
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
+      - name: Show Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME/platforms" "$ANDROID_HOME/build-tools" || echo "::error::Android SDK not found on runner"
 
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
       - name: Build debug APK
-        run: gradle :app:assembleDebug --stacktrace
+        run: |
+          set -o pipefail
+          gradle :app:assembleDebug --console=plain 2>&1 | tee build.log
+        continue-on-error: true
+        id: build
+
+      # Logs can't always be downloaded, so surface the key lines as annotations.
+      - name: Report build errors
+        if: steps.build.outcome == 'failure'
+        run: |
+          grep -E "error:|e: |FAILURE|What went wrong|Could not|> " build.log | head -40 | while IFS= read -r line; do
+            echo "::error::${line//%/%25}"
+          done
+          exit 1
 
       - name: Rename APK
         run: cp app/build/outputs/apk/debug/app-debug.apk PixelFlowBot-${{ github.run_number }}.apk
