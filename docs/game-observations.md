@@ -58,6 +58,13 @@ Characters: same colors incl. black (Level 25). Shot counts seen: 1 to 50.
 - Noise to fix later: up to ~37 cells read as orange mid-game on a level with no orange cubes (likely hit animations on yellow cubes).
 - Win rate so far (v0.4): 1 of 1. Need more games before trusting it.
 
+## Level 26 (v0.4 could not play) - samples/level26_start.jpg
+- Queue has 3 columns here (centred at x 336/540/745), not 4. Column count varies by level.
+- "?" hidden characters exist further back in the queue.
+- New cube/character colour: dark green (s 1.0, v 0.54-0.64), distinct from bright green.
+- Board is taller: rows from y 385 to 1350. The panel frame itself is identical on L24-26 (inner edges x 93-987, y 387-1398).
+- Fixed in v0.5: queue row scanned across the full width; "?" recognised; DARK_GREEN colour; reading area = whole panel inside, minus rounded corners; stray shine on white characters ignored.
+
 ## Board reader status (Python prototype)
 - tools/board_reader.py: calibrates grid once per level from the full board (frequency fit of cube spacing), then reads every cube color.
 - Tested on Level 24 start, Level 24 mid-level (with cleared cubes) and Level 25 start: redrawn boards match the screenshots.

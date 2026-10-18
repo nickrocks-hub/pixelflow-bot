@@ -8,13 +8,19 @@ public final class CharReader {
     // Layout positions on a 1080x2520 screen (measured from recordings).
     public static final float[] SLOT_X = {130, 336, 540, 746, 950};
     public static final float SLOT_Y = 1725;
-    public static final float[] QUEUE_X = {234, 440, 644, 848};
+    /** Front-row height of the queue. The number of columns varies by level (4 in L24-25, 3 in L26). */
     public static final float QUEUE_Y = 1937;
 
     public static final class Character {
-        public final GameColor color; public final int shots;
-        Character(GameColor color, int shots) { this.color = color; this.shots = shots; }
-        @Override public String toString() { return color.name().toLowerCase() + " " + shots; }
+        public final GameColor color;
+        public final int shots;          // 0 when hidden
+        public final boolean hidden;     // "?" character: colour and shots unknown until it is sent
+        public final float x;            // layout x of the character's centre (where to tap)
+        Character(GameColor color, int shots, boolean hidden, float x) {
+            this.color = color; this.shots = shots; this.hidden = hidden; this.x = x;
+        }
+        public String code() { return hidden ? "?" : color.code + "" + shots; }
+        @Override public String toString() { return hidden ? "hidden ?" : color.name().toLowerCase() + " " + shots; }
     }
 
     private static final int TW = 16, TH = 24;
@@ -37,10 +43,43 @@ public final class CharReader {
         return out;
     }
 
+    /**
+     * Scans the whole front row for numbers (or "?"), left to right, so any number of
+     * columns works. Glyphs closer than about one glyph width belong to the same number.
+     */
     public static Character[] readQueue(Frame f) {
-        Character[] out = new Character[QUEUE_X.length];
-        for (int i = 0; i < out.length; i++) out[i] = readAt(f, QUEUE_X[i], QUEUE_Y);
-        return out;
+        int y0 = f.Y(QUEUE_Y - 40), y1 = f.Y(QUEUE_Y + 40);
+        List<int[]> gl = glyphs(f, f.X(10), y0, f.X(1070), y1);   // {minX, maxX, char}
+        List<Character> out = new ArrayList<>();
+        int i = 0;
+        while (i < gl.size()) {
+            int j = i;
+            while (j + 1 < gl.size() && gl.get(j + 1)[0] - gl.get(j)[1] < 25 * f.sx) j++;
+            StringBuilder num = new StringBuilder();
+            boolean unknown = false;
+            for (int k = i; k <= j; k++) {
+                char ch = (char) gl.get(k)[2];
+                if (ch == 'x') unknown = true; else num.append(ch);
+            }
+            float cxPx = (gl.get(i)[0] + gl.get(j)[1]) / 2f;
+            Character c = makeChar(f, cxPx / f.sx, QUEUE_Y, num.toString(), unknown);
+            if (c != null) out.add(c);
+            i = j + 1;
+        }
+        return out.toArray(new Character[0]);
+    }
+
+    static Character makeChar(Frame f, float lx, float ly, String num, boolean unknown) {
+        int cx = f.X(lx), cy = f.Y(ly);
+        int[] m = f.medianRgb(cx - Math.round(50 * f.sx), cy + Math.round(45 * f.sy),
+                cx + Math.round(50 * f.sx), cy + Math.round(95 * f.sy));
+        GameColor col = GameColor.classify(m[0], m[1], m[2]);
+        if (col == GameColor.EMPTY) return null;
+        // Stray shapes (e.g. the shine on white characters) are ignored when real digits are present.
+        if (num.length() >= 1 && num.length() <= 2)
+            return new Character(col, Integer.parseInt(num), false, lx);
+        if (num.length() == 0 && unknown) return new Character(col, 0, true, lx);   // "?"
+        return null;
     }
 
     /** Free belt spaces from the "x/5" counter, or -1 if unreadable. Red counter = 0. */
@@ -58,20 +97,22 @@ public final class CharReader {
     }
 
     static Character readAt(Frame f, float lx, float ly) {
-        int cx = f.X(lx), cy = f.Y(ly);
-        int x0 = f.X(lx - 75), y0 = f.Y(ly - 40), x1 = f.X(lx + 75), y1 = f.Y(ly + 40);
         StringBuilder num = new StringBuilder();
-        for (String d : digits(f, x0, y0, x1, y1)) if (!d.equals("x")) num.append(d);
-        if (num.length() == 0 || num.length() > 2) return null;
-        int[] m = f.medianRgb(cx - Math.round(50 * f.sx), cy + Math.round(45 * f.sy),
-                cx + Math.round(50 * f.sx), cy + Math.round(95 * f.sy));
-        GameColor col = GameColor.classify(m[0], m[1], m[2]);
-        if (col == GameColor.EMPTY) return null;
-        return new Character(col, Integer.parseInt(num.toString()));
+        boolean unknown = false;
+        for (String d : digits(f, f.X(lx - 75), f.Y(ly - 40), f.X(lx + 75), f.Y(ly + 40))) {
+            if (d.equals("x")) unknown = true; else num.append(d);
+        }
+        return makeChar(f, lx, ly, num.toString(), unknown);
     }
 
-    /** White digit shapes enclosed by a dark outline, left to right, each classified. */
     static List<String> digits(Frame f, int x0, int y0, int x1, int y1) {
+        List<String> out = new ArrayList<>();
+        for (int[] g : glyphs(f, x0, y0, x1, y1)) out.add(String.valueOf((char) g[2]));
+        return out;
+    }
+
+    /** White glyphs enclosed by a dark outline, left to right: {screen minX, screen maxX, char ('x' = not a digit)}. */
+    static List<int[]> glyphs(Frame f, int x0, int y0, int x1, int y1) {
         int W = x1 - x0, H = y1 - y0;
         boolean[] white = new boolean[W * H], dark = new boolean[W * H];
         for (int y = 0; y < H; y++) for (int x = 0; x < W; x++) {
@@ -111,8 +152,8 @@ public final class CharReader {
             keep.add(b);
         }
         keep.sort((a, b) -> Integer.compare(a[0], b[0]));
-        List<String> out = new ArrayList<>();
-        for (int[] b : keep) out.add(String.valueOf(classify(label, W, b)));
+        List<int[]> out = new ArrayList<>();
+        for (int[] b : keep) out.add(new int[]{x0 + b[0], x0 + b[2], classify(label, W, b)});
         return out;
     }
 

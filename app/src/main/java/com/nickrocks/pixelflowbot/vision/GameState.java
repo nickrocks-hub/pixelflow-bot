@@ -89,7 +89,7 @@ public final class GameState {
         StringBuilder sb = new StringBuilder();
         for (CharReader.Character c : cs) {
             if (sb.length() > 0) sb.append(", ");
-            sb.append(c == null ? "-" : c.color.code + "" + c.shots);
+            sb.append(c == null ? "-" : c.code());
         }
         return sb.toString();
     }

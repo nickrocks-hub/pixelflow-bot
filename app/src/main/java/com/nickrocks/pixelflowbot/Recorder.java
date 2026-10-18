@@ -75,7 +75,7 @@ final class Recorder {
         StringBuilder sb = new StringBuilder("[");
         for (int i = 0; i < cs.length; i++) {
             if (i > 0) sb.append(',');
-            sb.append(cs[i] == null ? "null" : q(cs[i].color.code + "" + cs[i].shots));
+            sb.append(cs[i] == null ? "null" : q(cs[i].code()));
         }
         return sb.append(']').toString();
     }

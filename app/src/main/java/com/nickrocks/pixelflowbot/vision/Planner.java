@@ -33,10 +33,10 @@ public final class Planner {
             this.fromSlot = fromSlot; this.index = index; this.ch = ch; this.score = score; this.clean = clean;
         }
         /** Where to tap, in 1080x2520 layout coordinates (character body, under the number). */
-        public float layoutX() { return fromSlot ? CharReader.SLOT_X[index] : CharReader.QUEUE_X[index]; }
+        public float layoutX() { return fromSlot ? CharReader.SLOT_X[index] : ch.x; }
         public float layoutY() { return (fromSlot ? CharReader.SLOT_Y : CharReader.QUEUE_Y) + 25; }
         @Override public String toString() {
-            return (fromSlot ? "slot " : "queue ") + (index + 1) + " (" + ch.color.code + ch.shots + ")";
+            return (fromSlot ? "slot " : "queue ") + (index + 1) + " (" + ch.code() + ")";
         }
     }
 
@@ -128,7 +128,7 @@ public final class Planner {
             CharReader.Character[] list = slots ? s.slots : s.queue;
             for (int i = 0; i < list.length; i++) {
                 CharReader.Character c = list[i];
-                if (c == null) continue;
+                if (c == null || c.hidden) continue;
                 float avail = exp[c.color.ordinal()] - inFlight[c.color.ordinal()];
                 if (avail <= 0) continue;
                 boolean clean = c.shots <= avail;
@@ -161,10 +161,16 @@ public final class Planner {
         for (int i = 0; i < s.queue.length; i++) {
             CharReader.Character c = s.queue[i];
             if (c == null) continue;
-            float sc = rem[c.color.ordinal()];
+            float sc = c.hidden ? 0.5f : rem[c.color.ordinal()];
             if (dig == null || sc > dig.score) dig = new Move(false, i, c, sc, false);
         }
-        if (dig == null) return new Decision(null, false, "no characters left, waiting for the level to finish");
+        if (dig == null) {
+            int cubes = 0;
+            for (int v : rem) cubes += v;
+            if (cubes > 30 && slotsUsed == 0)
+                return new Decision(null, true, "can't see any characters (" + cubes + " cubes left)");
+            return new Decision(null, false, "no characters left, waiting for the level to finish");
+        }
         return new Decision(dig, false, "digging: nothing exposed for any character");
     }
 }

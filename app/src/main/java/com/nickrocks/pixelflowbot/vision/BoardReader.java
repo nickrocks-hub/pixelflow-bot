@@ -9,8 +9,10 @@ package com.nickrocks.pixelflowbot.vision;
  * started mid-level. The grid covers the whole board panel; cells with no cube read EMPTY.
  */
 public final class BoardReader {
-    // Board panel interior, in 1080x2520 layout coordinates.
-    static final float RX0 = 100, RX1 = 980, RY0 = 420, RY1 = 1330;
+    // Inside of the board panel's light frame, in 1080x2520 layout coordinates.
+    // Same on Levels 24, 25 and 26; only the board inside it changes size.
+    static final float RX0 = 93, RX1 = 987, RY0 = 387, RY1 = 1398;
+    static final float CORNER = 40;
 
     public static final class Calibration {
         public final float x0, y0, cellW, cellH;   // x0,y0 = top-left corner of cell (0,0)
@@ -91,9 +93,13 @@ public final class BoardReader {
         double[] cx = comb(gx, sx[0]), cy = comb(gy, sy[0]);
         double pw = cx[0], ph = cy[0];
         if (ph / pw < 0.8 || ph / pw > 1.1) return null;   // not a cube grid
-        // Cell (0,0) starts at the first gap inside the region.
+        // Cell (0,0) starts at the first gap inside the region, or one cell earlier if that cell's
+        // centre is still inside (a board can start right at the frame).
         float gx0 = (float) (x0 + cx[1]), gy0 = (float) (y0 + cy[1]);
-        int cols = (int) Math.floor((x1 - gx0) / pw), rows = (int) Math.floor((y1 - gy0) / ph);
+        if (gx0 - pw * 0.65 >= x0) gx0 -= pw;
+        if (gy0 - ph * 0.65 >= y0) gy0 -= ph;
+        int cols = (int) Math.floor((x1 - gx0 - 0.65 * pw) / pw) + 1;
+        int rows = (int) Math.floor((y1 - gy0 - 0.65 * ph) / ph) + 1;
         if (cols < 5 || rows < 5) return null;
         Calibration c = new Calibration(gx0, gy0, (float) pw, (float) ph, cols, rows);
         // A real board has plenty of cubes.
@@ -105,9 +111,13 @@ public final class BoardReader {
     /** Colour of every cell, [row][col]. */
     public static GameColor[][] read(Frame f, Calibration c) {
         GameColor[][] g = new GameColor[c.rows][c.cols];
+        float rx0 = f.X(RX0), rx1 = f.X(RX1), ry0 = f.Y(RY0), ry1 = f.Y(RY1), R = CORNER * f.sx;
         for (int r = 0; r < c.rows; r++) {
             for (int col = 0; col < c.cols; col++) {
                 float cx = c.cx(col), cy = c.cy(r);
+                // The frame's rounded corners poke into the region; never a cube there.
+                boolean nearX = cx < rx0 + R || cx > rx1 - R, nearY = cy < ry0 + R || cy > ry1 - R;
+                if (nearX && nearY) { g[r][col] = GameColor.EMPTY; continue; }
                 int[] m = f.medianRgb((int) (cx - c.cellW * .15f), (int) (cy - c.cellH * .15f),
                         (int) (cx + c.cellW * .15f), (int) (cy + c.cellH * .15f));
                 g[r][col] = GameColor.classify(m[0], m[1], m[2]);

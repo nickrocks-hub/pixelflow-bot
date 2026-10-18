@@ -20,7 +20,7 @@ public class RenderBoard {
         java.util.Map<GameColor, Color> pal = new java.util.EnumMap<>(GameColor.class);
         pal.put(GameColor.WHITE, new Color(235, 240, 248)); pal.put(GameColor.BLACK, new Color(20, 20, 20));
         pal.put(GameColor.RED, new Color(220, 20, 20)); pal.put(GameColor.ORANGE, new Color(255, 130, 20));
-        pal.put(GameColor.YELLOW, new Color(255, 215, 40)); pal.put(GameColor.GREEN, new Color(60, 200, 40));
+        pal.put(GameColor.YELLOW, new Color(255, 215, 40)); pal.put(GameColor.GREEN, new Color(110, 250, 70)); pal.put(GameColor.DARK_GREEN, new Color(10, 120, 0));
         pal.put(GameColor.BLUE, new Color(30, 80, 230)); pal.put(GameColor.PURPLE, new Color(140, 50, 240));
         gr.setColor(new Color(57, 59, 99)); gr.fillRect(W + 10, 0, W, H);
         for (int r = 0; r < c.rows; r++) for (int col = 0; col < c.cols; col++) {
