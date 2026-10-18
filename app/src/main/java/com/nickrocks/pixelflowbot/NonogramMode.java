@@ -318,6 +318,7 @@ final class NonogramMode {
         planPos = filled = sinceCheck = checks = swipeFailures = 0;
         startedAt = System.currentTimeMillis();
         try { rec = new Recorder(svc); } catch (Throwable t) { rec = null; }
+        savedFailFrame = false;
         log("{\"event\":\"start\",\"pkg\":" + Recorder.q(pkg) + "}");
         refresh();
         setInfo("Reading the puzzle…");
@@ -326,6 +327,12 @@ final class NonogramMode {
 
     private void onFirstRead(NonoVision.Reading r) {
         if (state != PLAYING) return;
+        if (r.grid == null || r.error != null) {
+            // Log every failed read and keep one screenshot of it, so problems on new screens can be fixed.
+            log("{\"event\":\"read_failed\",\"retriesLeft\":" + autoRetries + ",\"why\":" + Recorder.q(String.valueOf(r.error))
+                    + ",\"grid\":" + Recorder.q(String.valueOf(r.grid)) + ",\"clues\":" + Recorder.q(r.grid != null ? r.cluesText() : "") + "}");
+            if (r.frame != null && !savedFailFrame) { savedFailFrame = true; CaptureService.saveFrame(r.frame, true); }
+        }
         if ((r.grid == null || r.error != null) && autoRetries > 0) {
             autoRetries--;
             setInfo((r.grid == null ? "Waiting for the puzzle…" : "Re-reading the clues…") + " (" + (r.error != null ? r.error : "no grid") + ")");
@@ -360,8 +367,8 @@ final class NonogramMode {
         });
     }
 
-    /** Keeps a copy of a frame the reader couldn't make sense of, and logs what it read. */
     private String lastSavedClues;
+    private boolean savedFailFrame;
 
     /** Keeps ONE copy of a frame the reader couldn't make sense of (per puzzle), and logs what it read. */
     private void saveMisread(NonoVision.Reading r) {
