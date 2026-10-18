@@ -23,7 +23,8 @@ public final class AmazeVision {
     public static final class Arrow {
         public int id;
         public int[] cells;     // lattice indices from tail to head
-        public int dir;         // direction the head points
+        public int dir;         // direction the head points, or -1 if the head is off screen
+        public boolean partial; // part of it runs off the screen
         public int head() { return cells[cells.length - 1]; }
     }
 
@@ -34,6 +35,7 @@ public final class AmazeVision {
         public int[] owner;              // lattice index -> arrow id, or -1
         public int lives = -1;           // blue drops in the header
         public boolean cutOff;           // arrows run off the screen edge: zoom out first
+        public boolean[] cut = new boolean[4]; // which sides (UP/RIGHT/DOWN/LEFT) run off the screen
         public int top, bottom, left, right; // ink bounding box (screen px)
         public String error;
         public long ms;
@@ -103,7 +105,11 @@ public final class AmazeVision {
         }
         if (n < 200) { lastNote = "no arrows on screen"; bd.error = lastNote; return false; }
         bd.left = minX; bd.right = maxX; bd.top = minY; bd.bottom = maxY;
-        bd.cutOff = minX <= 3 || maxX >= w - 4 || maxY >= y1 - 2;
+        bd.cut[LEFT] = minX <= 3;
+        bd.cut[RIGHT] = maxX >= w - 4;
+        bd.cut[DOWN] = maxY >= y1 - 2;
+        bd.cut[UP] = minY <= y0 + 1;
+        bd.cutOff = bd.cut[0] || bd.cut[1] || bd.cut[2] || bd.cut[3];
 
         // Line thickness: median length of short vertical ink runs (crossing horizontal lines).
         int t = thickness(m, w, y0, y1, minX, maxX);
@@ -169,11 +175,15 @@ public final class AmazeVision {
             }
             if (chain.size() < 2) continue;
             int a = chain.get(0), b = chain.get(chain.size() - 1);
-            float ha = headScore(m, w, h, bd, a, chain.get(1), t);
-            float hb = headScore(m, w, h, bd, b, chain.get(chain.size() - 2), t);
+            boolean cutA = runsOffScreen(m, w, y0, y1, bd, a, chain.get(1));
+            boolean cutB = runsOffScreen(m, w, y0, y1, bd, b, chain.get(chain.size() - 2));
+            float ha = cutA ? 0f : headScore(m, w, h, bd, a, chain.get(1), t);
+            float hb = cutB ? 0f : headScore(m, w, h, bd, b, chain.get(chain.size() - 2), t);
             boolean headAtB = hb > ha;
             float best = Math.max(ha, hb), other = Math.min(ha, hb);
-            if (best < 0.5f || other > 0.5f) {
+            boolean partial = cutA || cutB;
+            boolean headHidden = partial && best < 0.5f;   // the visible end is a tail: head is off screen
+            if (!headHidden && (best < 0.5f || other > 0.5f)) {
                 lastNote = "can't tell which end is the arrowhead at " + (a % bd.cols) + "," + (a / bd.cols) + " (" + ha + "/" + hb + ")";
                 bd.error = lastNote;
                 return false;
@@ -183,7 +193,8 @@ public final class AmazeVision {
             ar.cells = new int[chain.size()];
             for (int k = 0; k < chain.size(); k++) ar.cells[k] = headAtB ? chain.get(k) : chain.get(chain.size() - 1 - k);
             int hd = ar.cells[ar.cells.length - 1], before = ar.cells[ar.cells.length - 2];
-            ar.dir = dirOf(bd, before, hd);
+            ar.dir = headHidden ? -1 : dirOf(bd, before, hd);
+            ar.partial = partial;
             for (int cidx : ar.cells) bd.owner[cidx] = ar.id;
             bd.arrows.add(ar);
         }
@@ -192,6 +203,19 @@ public final class AmazeVision {
         }
         if (bd.arrows.isEmpty()) { lastNote = "no arrows found"; bd.error = lastNote; return false; }
         lastNote = bd.summary();
+        return true;
+    }
+
+    /** True if the line leaves the end point and continues straight to the edge of the screen. */
+    static boolean runsOffScreen(boolean[] m, int w, int y0, int y1, Board bd, int end, int inner) {
+        int d = dirOf(bd, inner, end);
+        float x = bd.px(end), y = bd.py(end);
+        float edge = d == LEFT ? x : d == RIGHT ? (w - 1) - x : d == UP ? y - y0 : (y1 - 1) - y;
+        if (edge > bd.pitch * 1.25f) return false;
+        for (float s = 2; s < edge - 2; s += 2) {
+            float xx = x + DX[d] * s, yy = y + DY[d] * s;
+            if (!near(m, w, y1, xx, yy, 1)) return false;
+        }
         return true;
     }
 

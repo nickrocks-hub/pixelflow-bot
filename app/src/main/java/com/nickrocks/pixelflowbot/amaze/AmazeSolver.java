@@ -16,6 +16,8 @@ public final class AmazeSolver {
 
     /** True if the line ahead of the head is clear of every other arrow (and of its own body). */
     public static boolean free(AmazeVision.Board b, AmazeVision.Arrow a) {
+        if (a.dir < 0) return false;                         // head is off screen
+        if (b.cut != null && b.cut[a.dir]) return false;     // its way out runs into the hidden part
         for (int i : ray(b, a)) if (b.owner[i] >= 0) return false;
         return true;
     }
@@ -66,6 +68,7 @@ public final class AmazeSolver {
      * remain stuck at the end: 0 means the board as read is fully solvable.
      */
     public static int stuckAfterClearing(AmazeVision.Board b) {
+        if (b.cutOff) return 0;   // can't judge a board we can't fully see
         int[] owner = b.owner.clone();
         boolean[] gone = new boolean[b.arrows.size()];
         boolean progress = true;

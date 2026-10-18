@@ -68,13 +68,16 @@ public class CaptureService extends Service {
     public static void requestSaveFrame() { saveNextFrame = true; }
 
     /** Saves an already-captured frame (e.g. one the bot misread) to Pictures/PixelFlowBot, off the main thread. */
-    public static void saveFrame(com.nickrocks.pixelflowbot.vision.Frame f) {
+    public static void saveFrame(com.nickrocks.pixelflowbot.vision.Frame f) { saveFrame(f, false); }
+
+    /** quiet = no "Saved" toast (used for automatic diagnostic saves). */
+    public static void saveFrame(com.nickrocks.pixelflowbot.vision.Frame f, boolean quiet) {
         CaptureService s = instance;
         if (s == null || f == null) return;
         new Thread(() -> {
             try {
                 Bitmap bmp = Bitmap.createBitmap(f.px, f.w, f.h, Bitmap.Config.ARGB_8888);
-                s.saveBitmap(bmp);
+                s.saveBitmap(bmp, quiet);
             } catch (Throwable t) {
                 Log.e(TAG, "saveFrame failed", t);
             }
@@ -221,7 +224,9 @@ public class CaptureService extends Service {
         return cropped;
     }
 
-    private void saveBitmap(Bitmap bmp) {
+    private void saveBitmap(Bitmap bmp) { saveBitmap(bmp, false); }
+
+    private void saveBitmap(Bitmap bmp, boolean quiet) {
         String name = "pixelflow_" + System.currentTimeMillis() + ".png";
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -235,14 +240,14 @@ public class CaptureService extends Service {
                 try (OutputStream os = cr.openOutputStream(uri)) {
                     bmp.compress(Bitmap.CompressFormat.PNG, 100, os);
                 }
-                toast("Saved to Pictures/PixelFlowBot");
+                if (!quiet) toast("Saved to Pictures/PixelFlowBot");
             } else {
                 File dir = getExternalFilesDir("frames");
                 File f = new File(dir, name);
                 try (FileOutputStream os = new FileOutputStream(f)) {
                     bmp.compress(Bitmap.CompressFormat.PNG, 100, os);
                 }
-                toast("Saved to " + f.getAbsolutePath());
+                if (!quiet) toast("Saved to " + f.getAbsolutePath());
             }
         } catch (Exception e) {
             Log.e(TAG, "Save failed", e);

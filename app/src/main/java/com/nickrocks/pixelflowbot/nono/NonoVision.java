@@ -471,7 +471,16 @@ public final class NonoVision {
         }
         // Drop specks (anti-aliasing from tab borders etc.).
         List<Glyph> gs = new ArrayList<>();
-        for (Glyph g : glyphs) if (g.y1 - g.y0 + 1 >= h * 0.6f) gs.add(g);
+        for (Glyph g : glyphs) {
+            if (g.y1 - g.y0 + 1 < h * 0.6f) continue;
+            // Two digits drawn touching (e.g. "10" at small sizes) form one wide blob: no single digit
+            // in this font is wider than ~0.8 x its height, so split it at the thinnest column.
+            if (g.x1 - g.x0 + 1 > h * 0.95f) {
+                Glyph[] parts = split(f, g);
+                if (parts != null) { gs.add(parts[0]); gs.add(parts[1]); continue; }
+            }
+            gs.add(g);
+        }
         List<Integer> nums = new ArrayList<>();
         int value = -1;
         Glyph prev = null;
@@ -496,6 +505,47 @@ public final class NonoVision {
         // A clue can't contain a lone 0 next to other numbers: that means digits were split.
         if (nums.size() > 1 && nums.contains(0) && out.splitAt == null) out.splitAt = where;
         return nums;
+    }
+
+    /**
+     * Splits a two-digit blob: tries every cut in the middle 20-80% and keeps the one where both
+     * halves look most like real digits (the cut with the least ink can fall inside a "0").
+     */
+    static Glyph[] split(Frame f, Glyph g) {
+        int w = g.x1 - g.x0 + 1;
+        Glyph[] best = null;
+        float bestScore = Float.MAX_VALUE;
+        for (int x = g.x0 + (int) (w * 0.2f); x <= g.x0 + (int) (w * 0.8f); x++) {
+            Glyph[] parts = cutAt(f, g, x);
+            if (parts == null) continue;
+            float score = 0;
+            for (Glyph p : parts) score += Digits.classify(Digits.features(f, p.x0, p.y0, p.x1, p.y1, null)).dist;
+            if (score < bestScore) { bestScore = score; best = parts; }
+        }
+        return best;
+    }
+
+    static Glyph[] cutAt(Frame f, Glyph g, int cut) {
+        Glyph a = new Glyph(), b = new Glyph();
+        a.x0 = g.x0; a.x1 = cut - 1; b.x0 = cut; b.x1 = g.x1;
+        for (Glyph p : new Glyph[]{a, b}) {
+            while (p.x1 > p.x0 && colEmpty(f, p.x1, g.y0, g.y1)) p.x1--;
+            while (p.x0 < p.x1 && colEmpty(f, p.x0, g.y0, g.y1)) p.x0++;
+            p.y0 = Integer.MAX_VALUE; p.y1 = -1;
+            for (int x = p.x0; x <= p.x1; x++) {
+                for (int y = g.y0; y <= g.y1; y++) {
+                    if (ink(f.px[y * f.w + x])) { p.y0 = Math.min(p.y0, y); p.y1 = Math.max(p.y1, y); }
+                }
+            }
+            // Each half must be a full-height digit.
+            if (p.y1 < 0 || p.x1 - p.x0 < 2 || (p.y1 - p.y0 + 1) < (g.y1 - g.y0 + 1) * 0.85f) return null;
+        }
+        return new Glyph[]{a, b};
+    }
+
+    static boolean colEmpty(Frame f, int x, int y0, int y1) {
+        for (int y = y0; y <= y1; y++) if (ink(f.px[y * f.w + x])) return false;
+        return true;
     }
 
     // ---------------- toggle ----------------

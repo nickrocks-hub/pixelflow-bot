@@ -301,6 +301,7 @@ final class AmazeMode {
     private void resume() {
         state = PLAYING;
         prevSig = null;
+        zoomTries = 3;   // the user may have zoomed by hand: don't fight it
         unstable = noBoard = noEffect = dropDips = 0;
         refresh();
         setCompact(true);
@@ -351,18 +352,24 @@ final class AmazeMode {
         }
         noBoard = 0;
 
-        if (b.cutOff) {
-            if (zoomTries < 4) {
-                zoomTries++;
-                setInfo("The board runs off the screen — zooming out (" + zoomTries + ")…");
-                log("{\"event\":\"zoom_out\",\"try\":" + zoomTries + "}");
-                zoomOut(b, f, () -> { prevSig = null; again(900); });
-                return;
-            }
-            pause("the board still doesn't fit after zooming out — pinch it smaller by hand, then Resume");
+        // Board bigger than the screen: try pinching out a few times (only before the first move,
+        // when nothing is flying off the edge). After that, play safely with what's visible: arrows
+        // aimed at a hidden side are never tapped.
+        if (b.cutOff && rounds == 0 && zoomTries < 3 && b.error == null || b.cutOff && rounds == 0 && zoomTries < 3 && b.arrows.isEmpty()) {
+            zoomTries++;
+            int width = b.right - b.left;
+            setInfo("The board runs off the screen — zooming out (" + zoomTries + ")…");
+            log("{\"event\":\"zoom_out\",\"try\":" + zoomTries + ",\"inkWidth\":" + width + ",\"cut\":\"" + cutText(b) + "\"}");
+            zoomOut(b, f, zoomTries, () -> { prevSig = null; again(1000); });
             return;
         }
 
+        if (b.error != null && b.cutOff && rounds == 0 && zoomTries < 3) {
+            zoomTries++;
+            log("{\"event\":\"zoom_out\",\"try\":" + zoomTries + ",\"inkWidth\":" + (b.right - b.left) + ",\"cut\":\"" + cutText(b) + "\"}");
+            zoomOut(b, f, zoomTries, () -> { prevSig = null; again(1000); });
+            return;
+        }
         if (b.error != null || (b.arrows.size() > 0 && AmazeSolver.stuckAfterClearing(b) > 0)) {
             // Right after the last arrows left, the celebration card shows before its button does.
             if (cleared > 0 && lastCount >= 0 && lastCount <= lastBatchHeads.size() && ++noBoard >= 3) { done(); return; }
@@ -413,7 +420,9 @@ final class AmazeMode {
         }
         while (batch.size() > batchMax()) batch.remove(batch.size() - 1);
         if (batch.isEmpty()) {
-            if (AmazeSolver.freeArrows(b).isEmpty()) pause("no arrow has a clear way out — misread? (press Read to check)");
+            if (AmazeSolver.freeArrows(b).isEmpty() && b.cutOff)
+                pause("the rest of the board is off screen (" + cutText(b) + ") — pinch it smaller or drag it into view, then Resume");
+            else if (AmazeSolver.freeArrows(b).isEmpty()) pause("no arrow has a clear way out — misread? (press Read to check)");
             else pause("the free arrows are under the panel — drag the panel away, then Resume");
             return;
         }
@@ -477,12 +486,24 @@ final class AmazeMode {
         readBusy = true;
         capture((b, f) -> {
             readBusy = false;
-            zoomOut(b, f, () -> setInfo("Zoomed out. Press Read to check the board."));
+            zoomOut(b, f, 2, () -> setInfo("Zoomed out. Press Read to check the board."));
         });
     }
 
     /** Two-finger pinch toward the board centre, starting on empty background so nothing is tapped. */
-    private void zoomOut(AmazeVision.Board b, Frame f, Runnable after) {
+    private static String cutText(AmazeVision.Board b) {
+        StringBuilder sb = new StringBuilder();
+        String[] n = {"top", "right", "bottom", "left"};
+        for (int d = 0; d < 4; d++) if (b.cut[d]) sb.append(sb.length() > 0 ? ", " : "").append(n[d]);
+        return sb.length() == 0 ? "none" : sb.toString();
+    }
+
+    /**
+     * Pinch-out. Variants per attempt, since games differ in what they accept: 1 = both fingers
+     * together, 450 ms; 2 = slower with the second finger landing a moment later; 3 = vertical.
+     */
+    private void zoomOut(AmazeVision.Board b, Frame f, int variant, Runnable after) {
+        if (variant >= 3) { zoomOutVertical(b, f, after); return; }
         int w = f != null ? f.w : svc.getResources().getDisplayMetrics().widthPixels;
         int h = f != null ? f.h : svc.getResources().getDisplayMetrics().heightPixels;
         float cx = w / 2f;
@@ -492,9 +513,28 @@ final class AmazeMode {
         float[] b0 = clearSpot(f, cx + w * 0.36f, cy + h * 0.12f);
         Path p1 = new Path(); p1.moveTo(a0[0], a0[1]); p1.lineTo(cx - w * 0.05f, cy - h * 0.02f);
         Path p2 = new Path(); p2.moveTo(b0[0], b0[1]); p2.lineTo(cx + w * 0.05f, cy + h * 0.02f);
+        long dur = variant == 1 ? 450 : 850, lag = variant == 1 ? 0 : 60;
         GestureDescription g = new GestureDescription.Builder()
-                .addStroke(new GestureDescription.StrokeDescription(p1, 0, 450))
-                .addStroke(new GestureDescription.StrokeDescription(p2, 0, 450))
+                .addStroke(new GestureDescription.StrokeDescription(p1, 0, dur))
+                .addStroke(new GestureDescription.StrokeDescription(p2, lag, dur))
+                .build();
+        svc.dispatchGesture(g, new AccessibilityService.GestureResultCallback() {
+            @Override public void onCompleted(GestureDescription d) { handler.post(after); }
+            @Override public void onCancelled(GestureDescription d) { handler.post(after); }
+        }, handler);
+    }
+
+    private void zoomOutVertical(AmazeVision.Board b, Frame f, Runnable after) {
+        int w = f != null ? f.w : svc.getResources().getDisplayMetrics().widthPixels;
+        int h = f != null ? f.h : svc.getResources().getDisplayMetrics().heightPixels;
+        float cx = w / 2f, cy = h * 0.58f;
+        float[] a0 = clearSpot(f, cx - w * 0.08f, cy - h * 0.25f);
+        float[] b0 = clearSpot(f, cx + w * 0.08f, cy + h * 0.25f);
+        Path p1 = new Path(); p1.moveTo(a0[0], a0[1]); p1.lineTo(cx - w * 0.02f, cy - h * 0.03f);
+        Path p2 = new Path(); p2.moveTo(b0[0], b0[1]); p2.lineTo(cx + w * 0.02f, cy + h * 0.03f);
+        GestureDescription g = new GestureDescription.Builder()
+                .addStroke(new GestureDescription.StrokeDescription(p1, 0, 700))
+                .addStroke(new GestureDescription.StrokeDescription(p2, 30, 700))
                 .build();
         svc.dispatchGesture(g, new AccessibilityService.GestureResultCallback() {
             @Override public void onCompleted(GestureDescription d) { handler.post(after); }

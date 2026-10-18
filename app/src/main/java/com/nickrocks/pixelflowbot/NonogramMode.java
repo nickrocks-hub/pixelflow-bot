@@ -304,6 +304,7 @@ final class NonogramMode {
         gamePkg = pkg;
         removeOverlay();
         state = PLAYING;
+        if (autoRetries < 2) autoRetries = 2;   // a selected row, an animation or a toast can spoil one read
         plan.clear();
         planPos = filled = sinceCheck = checks = swipeFailures = 0;
         startedAt = System.currentTimeMillis();
@@ -318,7 +319,7 @@ final class NonogramMode {
         if (state != PLAYING) return;
         if ((r.grid == null || r.error != null) && autoRetries > 0) {
             autoRetries--;
-            setInfo("Puzzle still loading… (" + (r.error != null ? r.error : "no grid") + ")");
+            setInfo((r.grid == null ? "Waiting for the puzzle…" : "Re-reading the clues…") + " (" + (r.error != null ? r.error : "no grid") + ")");
             handler.postDelayed(() -> { if (state == PLAYING) capture(true, true, this::onFirstRead); }, 1500);
             return;
         }
@@ -345,10 +346,16 @@ final class NonogramMode {
     }
 
     /** Keeps a copy of a frame the reader couldn't make sense of, and logs what it read. */
+    private String lastSavedClues;
+
+    /** Keeps ONE copy of a frame the reader couldn't make sense of (per puzzle), and logs what it read. */
     private void saveMisread(NonoVision.Reading r) {
+        String key = r.cluesText();
+        if (key.equals(lastSavedClues)) return;
+        lastSavedClues = key;
         log("{\"event\":\"misread\",\"why\":" + Recorder.q(String.valueOf(r.error)) + ",\"grid\":" + Recorder.q(String.valueOf(r.grid))
                 + ",\"clues\":" + Recorder.q(r.cluesText()) + ",\"worstDigit\":" + r.worstDigit + ",\"at\":" + Recorder.q(r.worstWhere) + "}");
-        CaptureService.saveFrame(r.frame);
+        CaptureService.saveFrame(r.frame, true);
     }
 
     /** True if the panel covers any grid cell or the fill/cross switch. */
