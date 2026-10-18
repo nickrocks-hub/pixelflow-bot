@@ -444,10 +444,9 @@ public final class CandySolver {
                     int i19 = i17 % s.cols;
                     int[][] iArr5 = {new int[]{0, 1}, new int[]{0, -1}, new int[]{1, 0}, new int[]{-1, 0}};
                     int length2 = iArr5.length;
-                    int i20 = 0;
-                    while (true) {
-                        int i21 = i20;
-                        if (i21 < length2) {
+                    // (Was a decompiled while(true) with no exit: it never left after the 4th direction.)
+                    for (int i21 = 0; i21 < length2; i21++) {
+                        {
                             int[] iArr6 = iArr5[i21];
                             int i22 = iArr6[0] + i18;
                             int i23 = iArr6[1] + i19;
@@ -461,7 +460,6 @@ public final class CandySolver {
                                     }
                                 }
                             }
-                            i20 = i21 + 1;
                         }
                     }
                 }

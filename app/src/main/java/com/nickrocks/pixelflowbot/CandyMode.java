@@ -458,11 +458,18 @@ final class CandyMode {
                 }
             } else {
                 detect = this.vision.detect(frame.px, frame.w, frame.h);
+                // Any board shape: add islands the detector left out, or find narrow boards it missed.
+                try {
+                    detect = detect == null ? com.nickrocks.pixelflowbot.candy.BoardShape.find(frame.px, frame.w, frame.h)
+                            : com.nickrocks.pixelflowbot.candy.BoardShape.expand(frame.px, frame.w, frame.h, detect);
+                } catch (Throwable t) {
+                    Log.w(TAG, "board shape step failed", t);
+                }
                 synchronized (this) {
                     if (detect == null) {
                         detect = this.locked;
                         if (detect == null) {
-                            result.error = "board not found: " + this.vision.lastNote;
+                            result.error = "board not found: " + this.vision.lastNote + " / " + com.nickrocks.pixelflowbot.candy.BoardShape.lastNote;
                             return result;
                         }
                     } else if (this.locked == null || this.locked.similar(detect)) {
