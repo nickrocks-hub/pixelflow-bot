@@ -58,6 +58,7 @@ public class TapService extends AccessibilityService {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final Tracker tracker = new Tracker();
+    private final Planner planner = new Planner();
     private WindowManager wm;
     private LinearLayout panel, manualRows;
     private WindowManager.LayoutParams panelParams;
@@ -267,9 +268,10 @@ public class TapService extends AccessibilityService {
         autoPaused = false;
         autoMoves = 0; unreadable = 0; sameStateTaps = 0;
         prevSig = null; lastTapSig = null; lastGameplay = null; lastTapAt = 0; lastChangeAt = 0;
+        planner.reset();
         rec = new Recorder(this);
         rec.line("{\"t\":" + System.currentTimeMillis() + ",\"event\":\"start\",\"app\":" + Recorder.q(gamePkg)
-                + ",\"version\":\"0.3\",\"planner\":\"exposed-edge-v1\"}");
+                + ",\"version\":\"0.4\",\"planner\":\"exposed-edge-v2\"}");
         autoLine = "Starting… logging to " + rec.where();
         updateButtons();
         handler.postDelayed(this::autoStep, 300);
@@ -324,7 +326,7 @@ public class TapService extends AccessibilityService {
             GameState s; Planner.Decision d; String err = null;
             try {
                 s = tracker.update(frame);
-                d = Planner.decide(s);
+                d = planner.decide(s);
             } catch (Exception e) {
                 Log.e(TAG, "auto read failed", e);
                 s = null; d = null; err = e.toString();
@@ -413,7 +415,9 @@ public class TapService extends AccessibilityService {
         lastTapSig = sig;
         autoLine = "Move " + autoMoves + ": " + d.move + " · " + d.reason;
         rec.line("{\"t\":" + now + ",\"event\":\"move\",\"n\":" + autoMoves + ",\"tap\":" + Recorder.q(d.move.toString())
-                + ",\"reason\":" + Recorder.q(d.reason) + "," + Recorder.state(s, autoMoves == 1) + "}");
+                + ",\"reason\":" + Recorder.q(d.reason) + ",\"inFlight\":" + Recorder.q(planner.inFlightText())
+                + "," + Recorder.state(s, autoMoves == 1) + "}");
+        planner.committed(d.move);
         tap(x, y);
         handler.postDelayed(this::autoStep, READ_GAP_MS);
     }
@@ -454,7 +458,7 @@ public class TapService extends AccessibilityService {
                 try {
                     long t0 = System.currentTimeMillis();
                     GameState s = tracker.update(frame);
-                    Planner.Decision d = Planner.decide(s);
+                    Planner.Decision d = planner.decide(s);
                     long ms = System.currentTimeMillis() - t0;
                     text = s.summary() + (tracker.isCalibrating() && s.screen == GameState.Screen.GAMEPLAY
                             ? "\n(measuring board: waits for a still board with an empty belt)" : "")

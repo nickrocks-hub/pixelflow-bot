@@ -7,11 +7,12 @@ import java.io.File;
 public class PlanReplay {
     public static void main(String[] a) throws Exception {
         Tracker t = new Tracker();
+        Planner pl = new Planner();
         for (String p : a) {
             BufferedImage im = ImageIO.read(new File(p));
             int w = im.getWidth(), h = im.getHeight();
             GameState s = t.update(new Frame(w, h, im.getRGB(0, 0, w, h, null, 0, w)));
-            Planner.Decision d = Planner.decide(s);
+            Planner.Decision d = pl.decide(s);
             String state = s.screen != GameState.Screen.GAMEPLAY ? s.screen.name()
                     : "slots " + s.slotsUsed() + "/5 belt " + s.beltFree;
             System.out.println(new File(p).getName() + " | " + state + " | "

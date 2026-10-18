@@ -45,6 +45,19 @@ public final class GameState {
                 CharReader.readSlots(f), CharReader.readQueue(f), CharReader.readBeltFree(f));
     }
 
+    /**
+     * Same state, but a cell counts as a cube only if the previous read saw the same colour there.
+     * Shots and falling-cube animations last a split second, so they are filtered out.
+     */
+    GameState confirmedAgainst(GameColor[][] prev) {
+        if (board == null || prev == null || prev.length != board.length || prev[0].length != board[0].length) return this;
+        GameColor[][] b = new GameColor[board.length][board[0].length];
+        for (int r = 0; r < b.length; r++)
+            for (int c = 0; c < b[0].length; c++)
+                b[r][c] = board[r][c] == prev[r][c] ? board[r][c] : GameColor.EMPTY;
+        return new GameState(screen, calib, b, slots, queue, beltFree);
+    }
+
     public Map<GameColor, Integer> cubeCounts() {
         Map<GameColor, Integer> m = new EnumMap<>(GameColor.class);
         if (board == null) return m;

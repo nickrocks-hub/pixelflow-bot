@@ -1,55 +1,40 @@
 package com.nickrocks.pixelflowbot.vision;
 
 /**
- * Keeps the board calibration across frames, as the app does live.
- * Calibration is needed when gameplay starts (after a popup, map or loading screen)
- * or when the board looks bigger than before (a new, full board). It only happens once
- * the board has stopped moving for two frames in a row, so the level-start animation
- * (cubes dropping in) doesn't distort it, and only while the belt is empty (no cube is
- * being shot). If the belt never empties, it calibrates anyway after 10 frames.
+ * Keeps the board grid across frames, as the app does live.
+ * The grid is measured when gameplay starts (after any popup, map or loading screen),
+ * and accepted once two frames in a row give the same grid (this skips the level-start
+ * animation). It works from any point in a level.
  */
 public final class Tracker {
-    private BoardReader.Calibration calib;
+    private BoardReader.Calibration calib, candidate;
     private GameState.Screen last = GameState.Screen.OTHER;
     private boolean pending = true;
-    private int[] prevBox;
-    private int pendingFrames = 0;
     public int calibrations = 0;
+    private GameColor[][] prevRaw;
 
     public BoardReader.Calibration calibration() { return calib; }
     public boolean isCalibrating() { return pending; }
-    public void reset() { calib = null; pending = true; prevBox = null; pendingFrames = 0; }
+    public void reset() { calib = null; candidate = null; pending = true; prevRaw = null; }
 
     public GameState update(Frame f) {
         GameState.Screen s = GameState.detectScreen(f);
         if (s == GameState.Screen.GAMEPLAY) {
-            if (last != GameState.Screen.GAMEPLAY) pending = true;
-            int[] box = BoardReader.boardBox(f);
-            if (box != null && calib != null && !pending) {
-                int area = (box[1] - box[0] + 1) * (box[3] - box[2] + 1);
-                if (area > calib.area() * 1.05f) pending = true;
-            }
+            if (last != GameState.Screen.GAMEPLAY) { pending = true; candidate = null; }
             if (pending) {
-                pendingFrames++;
-                // Nothing on the belt means nothing is shooting, so no cube is mid-animation.
-                boolean quiet = CharReader.readBeltFree(f) == 5 || pendingFrames >= 10;
-                if (box != null && stable(box, prevBox) && quiet) {
-                    BoardReader.Calibration c = BoardReader.calibrate(f);
-                    if (c != null) { calib = c; calibrations++; pending = false; pendingFrames = 0; }
+                BoardReader.Calibration c = BoardReader.calibrate(f);
+                if (c != null && c.closeTo(candidate)) {
+                    calib = c; calibrations++; pending = false; candidate = null;
+                } else {
+                    candidate = c;
                 }
             }
-            prevBox = box;
-        } else {
-            prevBox = null;
         }
         last = s;
-        if (pending && s == GameState.Screen.GAMEPLAY) return GameState.read(f, null);
-        return GameState.read(f, calib);
-    }
-
-    private static boolean stable(int[] a, int[] b) {
-        if (a == null || b == null) return false;
-        for (int i = 0; i < 4; i++) if (Math.abs(a[i] - b[i]) > 3) return false;
-        return true;
+        if (pending && s == GameState.Screen.GAMEPLAY) { prevRaw = null; return GameState.read(f, null); }
+        GameState raw = GameState.read(f, calib);
+        GameState out = raw.confirmedAgainst(prevRaw);
+        prevRaw = raw.board;
+        return out;
     }
 }

@@ -1,128 +1,115 @@
 package com.nickrocks.pixelflowbot.vision;
 
 /**
- * Finds the cube grid and reads each cube's color.
- * Calibrate once on a full board (level start); the grid never moves during a level.
+ * Finds the cube grid and reads each cube's colour.
+ *
+ * The grid is measured from the spacing of the gaps between cubes (a frequency fit,
+ * then a fine "comb" search), not from the board's outline. Tested on recordings, this
+ * gives the same grid at the start, middle and end of a level, so the bot can be
+ * started mid-level. The grid covers the whole board panel; cells with no cube read EMPTY.
  */
 public final class BoardReader {
-    private static final int BG_R = 57, BG_G = 59, BG_B = 99;
+    // Board panel interior, in 1080x2520 layout coordinates.
+    static final float RX0 = 100, RX1 = 980, RY0 = 420, RY1 = 1330;
 
     public static final class Calibration {
-        public final int x0, x1, y0, y1, cols, rows;
-        public final float fit;
-        Calibration(int x0, int x1, int y0, int y1, int cols, int rows, float fit) {
-            this.x0 = x0; this.x1 = x1; this.y0 = y0; this.y1 = y1;
-            this.cols = cols; this.rows = rows; this.fit = fit;
+        public final float x0, y0, cellW, cellH;   // x0,y0 = top-left corner of cell (0,0)
+        public final int cols, rows;
+        Calibration(float x0, float y0, float cellW, float cellH, int cols, int rows) {
+            this.x0 = x0; this.y0 = y0; this.cellW = cellW; this.cellH = cellH; this.cols = cols; this.rows = rows;
         }
-        public float cellW() { return (x1 - x0 + 1) / (float) cols; }
-        public float cellH() { return (y1 - y0 + 1) / (float) rows; }
-        /** Screen centre of a cell, for tapping or drawing. */
-        public float cx(int c) { return x0 + (c + 0.5f) * cellW(); }
-        public float cy(int r) { return y0 + (r + 0.5f) * cellH(); }
-        public int area() { return (x1 - x0 + 1) * (y1 - y0 + 1); }
-        @Override public String toString() { return cols + "x" + rows; }
-    }
-
-    /** Bounding box of everything that isn't navy background inside the board panel. Null if none. */
-    public static int[] boardBox(Frame f) {
-        int sx0 = f.X(100), sx1 = f.X(980), sy0 = f.Y(420), sy1 = f.Y(1320);
-        int W = sx1 - sx0, H = sy1 - sy0;
-        int[] colCount = new int[W], rowCount = new int[H];
-        for (int y = 0; y < H; y++) {
-            for (int x = 0; x < W; x++) {
-                int X = sx0 + x, Y = sy0 + y;
-                int d = Math.abs(f.r(X, Y) - BG_R) + Math.abs(f.g(X, Y) - BG_G) + Math.abs(f.b(X, Y) - BG_B);
-                if (d > 60) { colCount[x]++; rowCount[y]++; }
-            }
+        public float cellW() { return cellW; }
+        public float cellH() { return cellH; }
+        /** Screen centre of a cell. */
+        public float cx(int c) { return x0 + (c + 0.5f) * cellW; }
+        public float cy(int r) { return y0 + (r + 0.5f) * cellH; }
+        boolean closeTo(Calibration o) {
+            return o != null && Math.abs(cellW - o.cellW) < 0.15f && Math.abs(cellH - o.cellH) < 0.15f
+                    && Math.abs(x0 - o.x0) < 1.5f && Math.abs(y0 - o.y0) < 1.5f;
         }
-        int cx0 = -1, cx1 = -1, cy0 = -1, cy1 = -1;
-        for (int x = 0; x < W; x++) if (colCount[x] > 0.35f * H) { if (cx0 < 0) cx0 = x; cx1 = x; }
-        for (int y = 0; y < H; y++) if (rowCount[y] > 0.35f * W) { if (cy0 < 0) cy0 = y; cy1 = y; }
-        if (cx0 < 0 || cy0 < 0 || cx1 - cx0 < 100 || cy1 - cy0 < 100) return null;
-        return new int[]{sx0 + cx0, sx0 + cx1, sy0 + cy0, sy0 + cy1};
-    }
-
-    /** Strongest repeat distance (pixels) in a 1-D profile, searched 15..45 px. */
-    static float pitch(float[] p) {
-        int n = p.length;
-        double mean = 0;
-        for (float v : p) mean += v;
-        mean /= n;
-        double best = -1; float bestP = 0;
-        for (float P = 15f; P < 45f; P += 0.02f) {
-            double re = 0, im = 0, w = 2 * Math.PI / P;
-            for (int k = 0; k < n; k++) {
-                double v = p[k] - mean;
-                re += v * Math.cos(w * k);
-                im -= v * Math.sin(w * k);
-            }
-            double s = re * re + im * im;
-            if (s > best) { best = s; bestP = P; }
+        @Override public String toString() {
+            return String.format(java.util.Locale.US, "pitch %.2fx%.2f", cellW, cellH);
         }
-        return bestP;
     }
 
     static float lum(Frame f, int x, int y) { return (f.r(x, y) + f.g(x, y) + f.b(x, y)) / 3f; }
 
-    /** Mean per-cell colour spread for a candidate grid; lower = better aligned. */
-    static float cellSpread(Frame f, int x0, int x1, int y0, int y1, int n, int m) {
-        float cw = (x1 - x0 + 1) / (float) n, ch = (y1 - y0 + 1) / (float) m;
-        double total = 0;
-        for (int r = 0; r < m; r++) {
-            for (int c = 0; c < n; c++) {
-                float cx = x0 + (c + .5f) * cw, cy = y0 + (r + .5f) * ch;
-                int ax = (int) (cx - cw * .2f), bx = (int) (cx + cw * .2f);
-                int ay = (int) (cy - ch * .2f), by = (int) (cy + ch * .2f);
-                double[] sum = new double[3], sq = new double[3];
-                int k = 0;
-                for (int y = ay; y < by; y++) for (int x = ax; x < bx; x++) {
-                    int p = f.px[y * f.w + x];
-                    int[] ch3 = {(p >> 16) & 0xff, (p >> 8) & 0xff, p & 0xff};
-                    for (int i = 0; i < 3; i++) { sum[i] += ch3[i]; sq[i] += ch3[i] * ch3[i]; }
-                    k++;
-                }
-                if (k == 0) continue;
-                for (int i = 0; i < 3; i++) {
-                    double mu = sum[i] / k;
-                    total += Math.sqrt(Math.max(0, sq[i] / k - mu * mu));
-                }
+    /** Strongest repeat distance in a profile (15..45 px, scaled) and the offset of its peaks. */
+    static double[] spectralPeak(float[] p, double lo, double hi) {
+        double mean = 0;
+        for (float v : p) mean += v;
+        mean /= p.length;
+        double best = -1, bp = 0, bph = 0;
+        for (double P = lo; P < hi; P += 0.02) {
+            double re = 0, im = 0, w = 2 * Math.PI / P;
+            for (int k = 0; k < p.length; k++) {
+                double v = p[k] - mean;
+                re += v * Math.cos(w * k);
+                im += v * Math.sin(w * k);
             }
+            double s = re * re + im * im;
+            if (s > best) { best = s; bp = P; bph = Math.atan2(im, re); }
         }
-        return (float) (total / (n * m));
+        double off = bph / (2 * Math.PI) * bp;
+        if (off < 0) off += bp;
+        return new double[]{bp, off, best};
     }
 
-    /** Run on a full board. Returns null if no board is visible. */
-    public static Calibration calibrate(Frame f) {
-        int[] box = boardBox(f);
-        if (box == null) return null;
-        int x0 = box[0], x1 = box[1], y0 = box[2], y1 = box[3];
-        int W = x1 - x0 + 1, H = y1 - y0 + 1;
-        float[] gx = new float[W - 1], gy = new float[H - 1];
-        for (int y = y0; y <= y1; y++)
-            for (int x = x0; x < x1; x++) gx[x - x0] += Math.abs(lum(f, x + 1, y) - lum(f, x, y));
-        for (int y = y0; y < y1; y++)
-            for (int x = x0; x <= x1; x++) gy[y - y0] += Math.abs(lum(f, x, y + 1) - lum(f, x, y));
-        float px = pitch(gx), py = pitch(gy);
-        Calibration best = null;
-        int[] ns = {(int) (W / px), Math.round(W / px), (int) (W / px) + 1};
-        int[] ms = {(int) (H / py), Math.round(H / py), (int) (H / py) + 1};
-        for (int n : ns) for (int m : ms) {
-            if (n < 5 || m < 5) continue;
-            float s = cellSpread(f, x0, x1, y0, y1, n, m);
-            if (best == null || s < best.fit) best = new Calibration(x0, x1, y0, y1, n, m, s);
+    /** Fine search: pitch within +-3% and offset, maximising mean gradient at the predicted gaps. */
+    static double[] comb(float[] g, double P0) {
+        double best = -1, bp = P0, bo = 0;
+        for (double P = P0 * 0.97; P <= P0 * 1.03; P += 0.005) {
+            for (double o = 0; o < P; o += 0.25) {
+                double s = 0;
+                int n = 0;
+                for (double x = o; x < g.length - 1; x += P) {
+                    int i = (int) x;
+                    double fr = x - i;
+                    s += g[i] * (1 - fr) + g[i + 1] * fr;
+                    n++;
+                }
+                s /= n;
+                if (s > best) { best = s; bp = P; bo = o; }
+            }
         }
-        return best;
+        return new double[]{bp, bo};
+    }
+
+    /** Measures the grid. Returns null if no cube grid is visible. */
+    public static Calibration calibrate(Frame f) {
+        int x0 = f.X(RX0), x1 = f.X(RX1), y0 = f.Y(RY0), y1 = f.Y(RY1);
+        float[] gx = new float[x1 - x0], gy = new float[y1 - y0];
+        for (int y = y0; y < y1; y++) {
+            for (int x = x0; x < x1; x++) {
+                float l = lum(f, x, y);
+                gx[x - x0] += Math.abs(lum(f, x + 1, y) - l);
+                gy[y - y0] += Math.abs(lum(f, x, y + 1) - l);
+            }
+        }
+        double lo = 15 * f.sx, hi = 45 * f.sx;
+        double[] sx = spectralPeak(gx, lo, hi), sy = spectralPeak(gy, lo, hi);
+        double[] cx = comb(gx, sx[0]), cy = comb(gy, sy[0]);
+        double pw = cx[0], ph = cy[0];
+        if (ph / pw < 0.8 || ph / pw > 1.1) return null;   // not a cube grid
+        // Cell (0,0) starts at the first gap inside the region.
+        float gx0 = (float) (x0 + cx[1]), gy0 = (float) (y0 + cy[1]);
+        int cols = (int) Math.floor((x1 - gx0) / pw), rows = (int) Math.floor((y1 - gy0) / ph);
+        if (cols < 5 || rows < 5) return null;
+        Calibration c = new Calibration(gx0, gy0, (float) pw, (float) ph, cols, rows);
+        // A real board has plenty of cubes.
+        int filled = 0;
+        for (GameColor[] row : read(f, c)) for (GameColor g : row) if (g != GameColor.EMPTY) filled++;
+        return filled >= 10 ? c : null;
     }
 
     /** Colour of every cell, [row][col]. */
     public static GameColor[][] read(Frame f, Calibration c) {
         GameColor[][] g = new GameColor[c.rows][c.cols];
-        float cw = c.cellW(), ch = c.cellH();
         for (int r = 0; r < c.rows; r++) {
             for (int col = 0; col < c.cols; col++) {
-                float cx = c.x0 + (col + .5f) * cw, cy = c.y0 + (r + .5f) * ch;
-                int[] m = f.medianRgb((int) (cx - cw * .15f), (int) (cy - ch * .15f),
-                        (int) (cx + cw * .15f), (int) (cy + ch * .15f));
+                float cx = c.cx(col), cy = c.cy(r);
+                int[] m = f.medianRgb((int) (cx - c.cellW * .15f), (int) (cy - c.cellH * .15f),
+                        (int) (cx + c.cellW * .15f), (int) (cy + c.cellH * .15f));
                 g[r][col] = GameColor.classify(m[0], m[1], m[2]);
             }
         }
