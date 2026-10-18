@@ -74,6 +74,8 @@ public final class CandyMode {
     private Button nextToggle, nextTeach;
     private View modeRow, nextRow;
     private int levelsDone;
+    private boolean parked;
+    private View candyRow3, candyRow4;
     private boolean dead;
     private String gamePkg;
     private Button gravityButton;
@@ -297,6 +299,7 @@ public final class CandyMode {
         });
         linearLayout3.addView(this.gridModeButton);
         this.candyBox.addView(linearLayout3);
+        this.candyRow3 = linearLayout3;
         LinearLayout linearLayout4 = new LinearLayout(this.svc);
         this.gravityButton = button("Gravity: auto", C_GREY, new View.OnClickListener() { // from class: com.nickrocks.pixelflowbot.CandyMode.8
             @Override // android.view.View.OnClickListener
@@ -316,6 +319,7 @@ public final class CandyMode {
             }
         }));
         this.candyBox.addView(linearLayout4);
+        this.candyRow4 = linearLayout4;
         this.panel.addView(this.candyBox);
         try {
             this.nono = new NonogramMode(this.svc, this);
@@ -434,6 +438,34 @@ public final class CandyMode {
     void setCompact(boolean on) {
         if (this.modeRow != null) this.modeRow.setVisibility(on ? View.GONE : View.VISIBLE);
         if (this.nextRow != null) this.nextRow.setVisibility(on ? View.GONE : View.VISIBLE);
+    }
+
+    /** Candy's own compact mode: hide its tool rows too. */
+    private void candyCompact(boolean on) {
+        setCompact(on);
+        if (this.candyRow3 != null) this.candyRow3.setVisibility(on ? View.GONE : View.VISIBLE);
+        if (this.candyRow4 != null) this.candyRow4.setVisibility(on ? View.GONE : View.VISIBLE);
+        if (this.info != null) this.info.setMaxLines(on ? 2 : 12);
+    }
+
+    /**
+     * Swipes can't pass through the panel, so park it above or below the board.
+     * Returns true if it had to move (the caller re-reads afterwards).
+     */
+    private boolean parkOffBoard(Board b) {
+        int[] pr = panelRect();
+        if (pr == null) return false;
+        float half = b.cell / 2f;
+        int top = Math.round(b.cy(0) - half), bottom = Math.round(b.cy(b.rows - 1) + half);
+        int left = Math.round(b.cx(0) - half), right = Math.round(b.cx(b.cols - 1) + half);
+        boolean over = pr[0] < right && pr[2] > left && pr[1] < bottom && pr[3] > top;
+        if (!over) return false;
+        int h = pr[3] - pr[1], gap = dp(6);
+        int screenH = this.svc.getResources().getDisplayMetrics().heightPixels;
+        if (top - gap - h >= 0) movePanel(top - gap - h);
+        else if (bottom + gap + h <= screenH) movePanel(bottom + gap);
+        else { movePanel(dp(4)); toast("The board fills the screen — the panel may block a few swipes."); }
+        return true;
     }
 
     /** Moves the floating panel's top edge to screen y. */
@@ -644,11 +676,20 @@ public final class CandyMode {
         }
     }
 
-    private void capture(final ResultSink resultSink) {
+    private void capture(final ResultSink sink) {
         final int i = this.readId + 1;
         this.readId = i;
         final boolean[] zArr = {false};
-        CaptureService.requestFrame(new AnonymousClass11(panelRect(), i, zArr, resultSink));
+        // Hide the panel while the frame is taken so it can never cover part of the board.
+        final View p = this.panel;
+        if (p != null) p.setVisibility(View.INVISIBLE);
+        final ResultSink resultSink = r -> {
+            if (p != null) p.setVisibility(View.VISIBLE);
+            sink.accept(r);
+        };
+        this.handler.postDelayed(() -> {
+            if (i == this.readId && !zArr[0]) CaptureService.requestFrame(new AnonymousClass11(null, i, zArr, resultSink));
+        }, 130L);
         this.handler.postDelayed(new Runnable() { // from class: com.nickrocks.pixelflowbot.CandyMode.12
             @Override // java.lang.Runnable
             public void run() {
@@ -811,6 +852,9 @@ public final class CandyMode {
                     this.gamePkg = currentPackage;
                     this.state = 1;
                     this.moves = 0;
+                    this.parked = false;
+                    candyCompact(true);
+                    movePanel(dp(4));
                     resetReadState();
                     this.banned.clear();
                     Arrays.fill(this.gravityVotes, 0);
@@ -879,6 +923,7 @@ public final class CandyMode {
     private void end(String str) {
         if (this.state != 0) {
             this.state = 0;
+            candyCompact(false);
             this.handler.removeCallbacks(this.stepRunnable);
             CaptureService.requestFrame(null);
             if (this.rec != null) {
@@ -970,6 +1015,10 @@ public final class CandyMode {
             }
             this.unreadable = 0;
             this.lastProblem = null;
+            if (!this.parked) {
+                this.parked = true;
+                if (parkOffBoard(board)) { later(400L); return; }
+            }
             if (this.baseline <= 0.0f) {
                 this.baseline = board.candyBrightness;
             } else {

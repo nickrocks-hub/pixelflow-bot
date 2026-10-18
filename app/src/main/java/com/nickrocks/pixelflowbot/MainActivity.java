@@ -138,7 +138,7 @@ public class MainActivity extends Activity {
         TextView t = text("PixelFlow Bot", 28, Color.WHITE);
         t.setTypeface(Ui.BLACK);
         titles.addView(t);
-        TextView v = text("v0.9.2 · game auto-players", 12, 0xCCFFFFFF);
+        TextView v = text("v0.9.3 · game auto-players", 12, 0xCCFFFFFF);
         v.setTypeface(Ui.MONO);
         titles.addView(v);
         top.addView(titles);
