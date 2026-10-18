@@ -37,7 +37,10 @@ public class MainActivity extends Activity {
         intro.setText("Setup:\n"
                 + "1. Turn on the tap service (Accessibility). A floating panel appears.\n"
                 + "2. Start screen capture and allow it (choose \"Entire screen\").\n"
-                + "3. Open Pixel Flow and use the panel: Test tap, Save frame, STOP.\n\n"
+                + "3. Open Pixel Flow and use the panel at the bottom:\n"
+                + "   Read = show what the bot sees once. Live = read every second.\n"
+                + "   For best results start Read/Live at the start of a level.\n"
+                + "   Recalibrate = re-measure the board. Test tap, Save frame.\n\n"
                 + "STOP ends capture, cancels taps and turns the tap service off.");
         root.addView(intro);
 

@@ -54,6 +54,7 @@ public class CaptureService extends Service {
     private static volatile CaptureService instance;
     private static volatile long frameCount = 0;
     private static volatile boolean saveNextFrame = false;
+    private static volatile java.util.function.Consumer<com.nickrocks.pixelflowbot.vision.Frame> frameRequest;
 
     private MediaProjection projection;
     private VirtualDisplay virtualDisplay;
@@ -65,6 +66,11 @@ public class CaptureService extends Service {
     public static boolean isRunning() { return instance != null; }
     public static long getFrameCount() { return frameCount; }
     public static void requestSaveFrame() { saveNextFrame = true; }
+
+    /** Delivers the next captured frame (on the capture thread). Frames only arrive when the screen changes. */
+    public static void requestFrame(java.util.function.Consumer<com.nickrocks.pixelflowbot.vision.Frame> cb) {
+        frameRequest = cb;
+    }
 
     public static void stop(Context ctx) {
         ctx.stopService(new Intent(ctx, CaptureService.class));
@@ -142,6 +148,16 @@ public class CaptureService extends Service {
                 img = reader.acquireLatestImage();
                 if (img == null) return;
                 frameCount++;
+                java.util.function.Consumer<com.nickrocks.pixelflowbot.vision.Frame> req = frameRequest;
+                if (req != null) {
+                    frameRequest = null;
+                    Bitmap bmp = imageToBitmap(img);
+                    int w = bmp.getWidth(), h = bmp.getHeight();
+                    int[] px = new int[w * h];
+                    bmp.getPixels(px, 0, w, 0, 0, w, h);
+                    bmp.recycle();
+                    req.accept(new com.nickrocks.pixelflowbot.vision.Frame(w, h, px));
+                }
                 if (saveNextFrame) {
                     saveNextFrame = false;
                     saveBitmap(imageToBitmap(img));
