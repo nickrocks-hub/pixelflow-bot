@@ -44,7 +44,7 @@ final class NonogramMode {
     private static final int IDLE = 0, PLAYING = 1, PAUSED = 2;
 
     private final TapService svc;
-    private final CandyMode host;
+    private final TapService host;
     private final SharedPreferences prefs;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
@@ -74,7 +74,7 @@ final class NonogramMode {
     private int baseRed;
     private int autoRetries;
 
-    NonogramMode(TapService svc, CandyMode host) {
+    NonogramMode(TapService svc, TapService host) {
         this.svc = svc;
         this.host = host;
         this.prefs = svc.getSharedPreferences(TapService.PREFS, 0);
@@ -221,7 +221,7 @@ final class NonogramMode {
             if (r.grid == null) { setInfo("No puzzle found: " + r.error); return; }
             if (r.error != null) {
                 saveMisread(r);
-                setInfo("Grid " + r.grid + "\nProblem: " + r.error + "\n" + r.cluesText() + "\nScreenshot saved to Pictures/PixelFlowBot.");
+                setInfo("Grid " + r.grid + "\nProblem: " + r.error + "\n" + r.cluesText() + "\nScreenshot saved to Pictures/AIGameBot.");
                 showOverlay(r.grid, null, r, 4000);
                 return;
             }
@@ -336,7 +336,7 @@ final class NonogramMode {
         if (r.grid == null) { end("no puzzle on screen (" + r.error + ")"); return; }
         if (r.error != null) {
             saveMisread(r);
-            end(r.error + "\nRead: " + r.cluesText() + "\nScreenshot saved to Pictures/PixelFlowBot — send it so the reader can be fixed.");
+            end(r.error + "\nRead: " + r.cluesText() + "\nScreenshot saved to Pictures/AIGameBot — send it so the reader can be fixed.");
             showOverlay(r.grid, null, r, 5000);
             return;
         }

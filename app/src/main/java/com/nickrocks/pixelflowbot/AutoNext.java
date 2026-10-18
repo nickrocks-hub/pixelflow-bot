@@ -70,7 +70,7 @@ final class AutoNext {
     }
 
     private final TapService svc;
-    private final CandyMode host;
+    private final TapService host;
     private final SharedPreferences prefs;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
@@ -80,7 +80,7 @@ final class AutoNext {
     private int runId;
     private boolean running;
 
-    AutoNext(TapService svc, CandyMode host) {
+    AutoNext(TapService svc, TapService host) {
         this.svc = svc;
         this.host = host;
         this.prefs = svc.getSharedPreferences(TapService.PREFS, 0);

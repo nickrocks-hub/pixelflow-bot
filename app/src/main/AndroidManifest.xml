@@ -23,10 +23,6 @@
         </activity>
 
         <activity
-            android:name=".LearnActivity"
-            android:exported="false" />
-
-        <activity
             android:name=".NonogramActivity"
             android:exported="false" />
 

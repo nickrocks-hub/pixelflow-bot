@@ -10,8 +10,8 @@ android {
         applicationId 'com.nickrocks.pixelflowbot'
         minSdk 26
         targetSdk 34
-        versionCode 16
-        versionName '1.1'
+        versionCode 17
+        versionName '1.2'
     }
 
     // Committed debug key, so every build from GitHub installs as an update.
@@ -40,8 +40,6 @@ android {
 }
 
 dependencies {
-    // Candy Crush board detector, kept as the original compiled classes from build 17.
-    implementation files('libs/candy-vision.jar')
 }
 
 // No other libraries: plain Android framework APIs only.

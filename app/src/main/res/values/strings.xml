@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">PixelFlow Bot</string>
-    <string name="accessibility_label">PixelFlow Bot taps</string>
-    <string name="accessibility_description">Lets PixelFlow Bot tap and swipe in the game you pick (Pixel Flow, Candy Crush, Nonogram.com or Amaze GO) when you press Start, and check which app is in front so it only plays while that game is open. It never taps ads, coins, boosters or purchases.</string>
+    <string name="app_name">AI GAME BOT</string>
+    <string name="accessibility_label">AI Game Bot taps</string>
+    <string name="accessibility_description">Lets AI Game Bot tap and swipe in Nonogram.com when you press Solve, and check which app is in front so it only plays while that game is open. It never taps ads, coins, boosters or purchases.</string>
 </resources>

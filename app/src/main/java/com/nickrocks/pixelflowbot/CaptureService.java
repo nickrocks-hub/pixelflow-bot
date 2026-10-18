@@ -39,7 +39,7 @@ import java.nio.ByteBuffer;
 /**
  * Foreground service that holds the MediaProjection and keeps the latest screen frame.
  * Later versions will hand frames to the board reader; for now it counts frames and
- * can save one to Pictures/PixelFlowBot so you can confirm capture works.
+ * can save one to Pictures/AIGameBot so you can confirm capture works.
  */
 public class CaptureService extends Service {
     private static final String TAG = "PFBot.Capture";
@@ -67,7 +67,7 @@ public class CaptureService extends Service {
     public static long getFrameCount() { return frameCount; }
     public static void requestSaveFrame() { saveNextFrame = true; }
 
-    /** Saves an already-captured frame (e.g. one the bot misread) to Pictures/PixelFlowBot, off the main thread. */
+    /** Saves an already-captured frame (e.g. one the bot misread) to Pictures/AIGameBot, off the main thread. */
     public static void saveFrame(com.nickrocks.pixelflowbot.vision.Frame f) { saveFrame(f, false); }
 
     /** quiet = no "Saved" toast (used for automatic diagnostic saves). */
@@ -186,7 +186,7 @@ public class CaptureService extends Service {
             }
         }, bg);
 
-        virtualDisplay = projection.createVirtualDisplay("PixelFlowBot",
+        virtualDisplay = projection.createVirtualDisplay("AIGameBot",
                 width, height, density,
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                 imageReader.getSurface(), null, bg);
@@ -233,14 +233,14 @@ public class CaptureService extends Service {
                 ContentValues v = new ContentValues();
                 v.put(MediaStore.Images.Media.DISPLAY_NAME, name);
                 v.put(MediaStore.Images.Media.MIME_TYPE, "image/png");
-                v.put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/PixelFlowBot");
+                v.put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/AIGameBot");
                 ContentResolver cr = getContentResolver();
                 Uri uri = cr.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, v);
                 if (uri == null) throw new IllegalStateException("MediaStore insert failed");
                 try (OutputStream os = cr.openOutputStream(uri)) {
                     bmp.compress(Bitmap.CompressFormat.PNG, 100, os);
                 }
-                if (!quiet) toast("Saved to Pictures/PixelFlowBot");
+                if (!quiet) toast("Saved to Pictures/AIGameBot");
             } else {
                 File dir = getExternalFilesDir("frames");
                 File f = new File(dir, name);
@@ -265,7 +265,7 @@ public class CaptureService extends Service {
                 new Intent(this, CaptureService.class).setAction(ACTION_STOP),
                 PendingIntent.FLAG_IMMUTABLE);
         return new Notification.Builder(this, CHANNEL_ID)
-                .setContentTitle("PixelFlow Bot is watching the screen")
+                .setContentTitle("AI Game Bot is watching the screen")
                 .setContentText("Tap Stop to end capture")
                 .setSmallIcon(android.R.drawable.ic_menu_camera)
                 .setOngoing(true)

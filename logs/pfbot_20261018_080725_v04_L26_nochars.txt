@@ -1,2 +1,0 @@
-{"t":1792325245595,"event":"start","app":"com.loomgames.pixelflow","version":"0.4","planner":"exposed-edge-v2"}
-{"t":1792325248798,"event":"end","why":"stopped by you","moves":0}

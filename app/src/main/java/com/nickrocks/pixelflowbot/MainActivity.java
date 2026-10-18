@@ -29,7 +29,6 @@ public class MainActivity extends Activity {
 
     private TextView tapChip, capChip;
     private Button tapButton, capButton;
-    private EditText xField, yField;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -52,15 +51,6 @@ public class MainActivity extends Activity {
         chips.addView(capChip);
         root.addView(chips);
 
-        root.addView(section("GET STARTED"));
-        tapButton = action("Turn on the tap service", Ui.ACCENT,
-                v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
-        root.addView(step("1", "Tap service", "Lets the bot tap for you. Find PixelFlow Bot under Accessibility → Installed apps.", tapButton));
-        capButton = action("Start screen capture", Ui.INFO, v -> requestCapture());
-        root.addView(step("2", "Screen capture", "Lets the bot see the game. Choose \"Entire screen\" when asked.", capButton));
-        root.addView(step("3", "Pick a game", "Use the ◆ game button on the floating panel to switch, open the game, then press Start / Solve.", null));
-        root.addView(step("4", "Next level, automatically", "⟳ Next level: ON makes the bot press Continue / Next / Play after each win. Nonogram and Amaze GO work out of the box. For Pixel Flow and Candy Crush, on the first level-complete screen press Teach next and tap the button yourself (and again on any screen that follows). It only presses a taught button when that exact button is showing, so it never taps ads, offers or fail screens.", null));
-
         root.addView(section("PLAY & TRAIN"));
         LinearLayout ng = card();
         TextView ngT = text("▦ Nonogram game", 18, Ui.TEXT);
@@ -72,48 +62,13 @@ public class MainActivity extends Activity {
         ng.addView(action("Play Nonogram", Ui.GAME_NONO, v -> startActivity(new Intent(this, NonogramActivity.class))));
         root.addView(ng);
 
-        root.addView(section("LEARNING AGENT"));
-        LinearLayout ai = card();
-        TextView aiT = text("🧠 AI Lab", 18, Ui.TEXT);
-        aiT.setTypeface(Ui.BLACK);
-        ai.addView(aiT);
-        TextView aiB = text("An agent that observes, acts, gets rewards, stores its experience and trains itself. Train it in the simulator, measure it, save versions — then let it play Nonogram.com from the panel (◆ Nonogram AI 🧠).", 13, Ui.TEXT_DIM);
-        aiB.setPadding(0, dp(6), 0, dp(10));
-        ai.addView(aiB);
-        ai.addView(action("Open AI Lab", Ui.GAME_AI, v -> startActivity(new Intent(this, LearnActivity.class))));
-        root.addView(ai);
-
-        root.addView(section("GAMES"));
-        root.addView(game(Ui.GAME_AMAZE, "Amaze GO", "NEW",
-                "Traces every arrow, taps only the ones with a completely clear way out (so it never loses a drop), several at once, zooms out big boards and moves on to the next level by itself."));
-        root.addView(game(Ui.GAME_NONO, "Nonogram", null,
-                "Reads every clue, solves the whole puzzle with proven logic, then fills it in with fast swipes. Never guesses, so it never costs a heart."));
-        root.addView(game(Ui.GAME_CANDY, "Candy Crush", null,
-                "Finds the board, ranks every swap and plays the best one. Pauses on popups and level ends."));
-        root.addView(game(Ui.GAME_PIXELFLOW, "Pixel Flow", null,
-                "Tracks the board and the queue, and taps characters in the right order from the start of a level."));
-
-        root.addView(section("TEST TAP"));
-        LinearLayout tapCard = card();
-        TextView tapLabel = text("Tap point in pixels (blank = screen centre)", 13, Ui.TEXT_DIM);
-        tapCard.addView(tapLabel);
-        LinearLayout row = new LinearLayout(this);
-        row.setPadding(0, dp(8), 0, dp(4));
-        xField = numberField("X");
-        yField = numberField("Y");
-        row.addView(xField);
-        View gap = new View(this);
-        gap.setLayoutParams(new LinearLayout.LayoutParams(dp(10), 1));
-        row.addView(gap);
-        row.addView(yField);
-        tapCard.addView(row);
-        SharedPreferences p = getSharedPreferences(TapService.PREFS, MODE_PRIVATE);
-        if (p.contains(TapService.KEY_X)) {
-            xField.setText(String.valueOf((int) p.getFloat(TapService.KEY_X, 0)));
-            yField.setText(String.valueOf((int) p.getFloat(TapService.KEY_Y, 0)));
-        }
-        tapCard.addView(action("Save tap point", Ui.MUTED, v -> saveTapPoint()));
-        root.addView(tapCard);
+        root.addView(section("SOLVE NONOGRAM.COM"));
+        tapButton = action("Turn on the tap service", Ui.ACCENT,
+                v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
+        root.addView(step("1", "Tap service", "Lets the bot tap for you. Find AI Game Bot under Accessibility → Installed apps.", tapButton));
+        capButton = action("Start screen capture", Ui.INFO, v -> requestCapture());
+        root.addView(step("2", "Screen capture", "Lets the bot see the game. Choose \"Entire screen\" when asked.", capButton));
+        root.addView(step("3", "Solve", "Open a level in Nonogram.com and press ▶ Solve on the floating panel. It reads every clue, solves the whole puzzle with proven logic and fills it in with fast swipes. It never guesses, so it never costs a heart. ⟳ Next level: ON moves on to the next level by itself.", null));
 
         Button stop = action("■  STOP everything", Ui.DANGER, v -> {
             CaptureService.stop(this);
@@ -123,7 +78,7 @@ public class MainActivity extends Activity {
         ((LinearLayout.LayoutParams) stop.getLayoutParams()).topMargin = dp(22);
         root.addView(stop);
 
-        TextView foot = text("Never taps ads, coins, boosters or purchases. ⏸ Pause holds, ■ STOP ends everything.\nLogs: Download/PixelFlowBot", 12, Ui.TEXT_FAINT);
+        TextView foot = text("Never taps ads, coins, boosters or purchases. ⏸ Pause holds, ■ STOP ends everything.\nLogs: Download/AIGameBot", 12, Ui.TEXT_FAINT);
         foot.setGravity(Gravity.CENTER);
         foot.setPadding(0, dp(16), 0, 0);
         root.addView(foot);
@@ -157,16 +112,16 @@ public class MainActivity extends Activity {
         LinearLayout titles = new LinearLayout(this);
         titles.setOrientation(LinearLayout.VERTICAL);
         titles.setPadding(dp(14), 0, 0, 0);
-        TextView t = text("PixelFlow Bot", 28, Color.WHITE);
+        TextView t = text("AI GAME BOT", 28, Color.WHITE);
         t.setTypeface(Ui.BLACK);
         titles.addView(t);
-        TextView v = text("v1.0 · game auto-players + AI", 12, 0xCCFFFFFF);
+        TextView v = text("v1.2 · Nonogram + learning AI", 12, 0xCCFFFFFF);
         v.setTypeface(Ui.MONO);
         titles.addView(v);
         top.addView(titles);
         h.addView(top);
 
-        TextView sub = text("Watches the screen, works out the best move and plays it for you.", 14, 0xE6FFFFFF);
+        TextView sub = text("Play Nonogram, watch a learning AI improve at it, or let the bot solve Nonogram.com for you.", 14, 0xE6FFFFFF);
         sub.setPadding(0, dp(14), 0, 0);
         h.addView(sub);
         return h;
@@ -361,24 +316,6 @@ public class MainActivity extends Activity {
                 .putExtra(CaptureService.EXTRA_DATA, data);
         startForegroundService(svc);
         capChip.postDelayed(this::refresh, 800);
-    }
-
-    private void saveTapPoint() {
-        SharedPreferences.Editor e = getSharedPreferences(TapService.PREFS, MODE_PRIVATE).edit();
-        String xs = xField.getText().toString().trim();
-        String ys = yField.getText().toString().trim();
-        if (xs.isEmpty() || ys.isEmpty()) {
-            e.remove(TapService.KEY_X).remove(TapService.KEY_Y).apply();
-            Toast.makeText(this, "Using screen centre", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        try {
-            e.putFloat(TapService.KEY_X, Float.parseFloat(xs))
-             .putFloat(TapService.KEY_Y, Float.parseFloat(ys)).apply();
-            Toast.makeText(this, "Tap point saved", Toast.LENGTH_SHORT).show();
-        } catch (NumberFormatException ex) {
-            Toast.makeText(this, "Enter whole numbers", Toast.LENGTH_SHORT).show();
-        }
     }
 
     private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
