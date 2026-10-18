@@ -70,6 +70,7 @@ final class NonogramMode {
     private int planPos, filled, sinceCheck, checks, swipeFailures;
     private long startedAt;
     private int baseRed;
+    private int autoRetries;
 
     NonogramMode(TapService svc, CandyMode host) {
         this.svc = svc;
@@ -84,7 +85,7 @@ final class NonogramMode {
         pauseButton = host.button("⏸ Pause", Ui.MUTED, v -> { if (state == PLAYING) pause("Paused by you"); });
         row1.addView(startButton);
         row1.addView(pauseButton);
-        row1.addView(host.button("■ STOP", Ui.DANGER, v -> { end("stopped by you"); TapService.stopEverything(); }));
+        row1.addView(host.button("■ STOP", Ui.DANGER, v -> { host.cancelNext(); end("stopped by you"); TapService.stopEverything(); }));
         box.addView(row1);
 
         info = new TextView(svc);
@@ -123,6 +124,14 @@ final class NonogramMode {
         pauseButton.setAlpha(state == PLAYING ? 1f : 0.4f);
         swipeButton.setText(prefs.getBoolean(PREF_SWIPE, true) ? "Fill: swipe rows" : "Fill: tap cells");
         speedButton.setText(new String[]{"Speed: careful", "Speed: normal", "Speed: turbo"}[prefs.getInt(PREF_SPEED, 1)]);
+    }
+
+    void note(String s) { setInfo(s); }
+
+    /** Started by auto-next on a fresh puzzle: like Solve, but retries a couple of reads. */
+    void autoStart() {
+        autoRetries = 3;
+        start();
     }
 
     private void setInfo(String s) {
@@ -306,6 +315,13 @@ final class NonogramMode {
 
     private void onFirstRead(NonoVision.Reading r) {
         if (state != PLAYING) return;
+        if ((r.grid == null || r.error != null) && autoRetries > 0) {
+            autoRetries--;
+            setInfo("Puzzle still loading… (" + (r.error != null ? r.error : "no grid") + ")");
+            handler.postDelayed(() -> { if (state == PLAYING) capture(true, true, this::onFirstRead); }, 1500);
+            return;
+        }
+        autoRetries = 0;
         if (r.grid == null) { end("no puzzle on screen (" + r.error + ")"); return; }
         if (r.error != null) { end(r.error); showOverlay(r.grid, null, r, 5000); return; }
         int[] pr = host.panelRect();
@@ -499,8 +515,9 @@ final class NonogramMode {
         log("{\"event\":\"solved\",\"secs\":" + secs + "}");
         state = IDLE;
         refresh();
-        setInfo("✓ Solved in " + secs + " s · " + checks + " checks. Tap Next Level, then Solve again.");
+        setInfo("✓ Solved in " + secs + " s · " + checks + " checks.");
         toast("Nonogram solved ✓");
+        handler.postDelayed(host::nonogramSolved, 1500);
     }
 
     private void pause(String why) {

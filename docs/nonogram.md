@@ -17,3 +17,11 @@ the answer is unique → refuse if the board disagrees → make sure fill mode i
 row by row → re-read every few moves; stop on any wrong fill or red mark.
 
 Desktop checks: `tools/nono/NonoProbe.java` (read screenshots), `MakeTemplates.java`, `FontTemplates.java`.
+
+## Auto next level (v0.8)
+- Nonogram "Level Completed!" screen: white pill (y 2154-2282, x ~200-880 on 1080x2520) on bright blue
+  (20,130,232). Popups (Rate Game, tutorial note) dim the background, so the detector (nono/NextButton) ignores it.
+- Pixel Flow / Candy Crush: user-taught steps (AutoNext.java). Each step = tap point + 18x6 colour
+  fingerprint of a 36%x6% patch around it; tapped only after matching on two looks in a row
+  (mean diff < 16, 90th percentile < 40). Tested on the Nonogram recording: a fingerprint taught on one
+  Level Completed frame matched all 9 clean ones and none of the popups or other screens.

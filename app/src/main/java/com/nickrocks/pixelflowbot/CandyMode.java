@@ -69,6 +69,9 @@ public final class CandyMode {
     private boolean candyMode;
     private String game = "pixelflow";
     private NonogramMode nono;
+    private AutoNext next;
+    private Button nextToggle, nextTeach;
+    private int levelsDone;
     private boolean dead;
     private String gamePkg;
     private Button gravityButton;
@@ -221,6 +224,21 @@ public final class CandyMode {
         });
         linearLayout.addView(this.modeButton);
         this.panel.addView(linearLayout, 1);
+        this.next = new AutoNext(this.svc, this);
+        LinearLayout nextRow = new LinearLayout(this.svc);
+        this.nextToggle = button("⟳ Next: on", C_GREY, v -> {
+            this.next.setEnabled(this.game, !this.next.enabled(this.game));
+            refreshNext();
+        });
+        this.nextTeach = button("Teach next", C_GREY, v -> this.next.teach(this.game, this::say));
+        nextRow.addView(this.nextToggle);
+        nextRow.addView(this.nextTeach);
+        nextRow.addView(button("Forget", C_GREY, v -> {
+            this.next.clearSteps(this.game);
+            refreshNext();
+            say("Forgot the taught next-level buttons for " + gameName(this.game) + ".");
+        }));
+        this.panel.addView(nextRow, 2);
         this.candyBox = new LinearLayout(this.svc);
         this.candyBox.setOrientation(1);
         LinearLayout linearLayout2 = new LinearLayout(this.svc);
@@ -318,6 +336,10 @@ public final class CandyMode {
 
     /** Cycles Pixel Flow → Candy Crush → Nonogram → Pixel Flow. */
     void toggleMode() {
+        if (this.next != null && this.next.busy()) {
+            toast("Going to the next level — press STOP first to switch games.");
+            return;
+        }
         if ("candy".equals(this.game) && this.state != 0) {
             toast("Stop Candy Crush auto-play first (Pause, then STOP or finish).");
             return;
@@ -357,6 +379,94 @@ public final class CandyMode {
         this.modeButton.setText(pf ? "◆ Pixel Flow  ⇄" : this.candyMode ? "◆ Candy Crush  ⇄" : "◆ Nonogram  ⇄");
         this.modeButton.setTextColor(-1);
         tint(this.modeButton, pf ? Ui.GAME_PIXELFLOW : this.candyMode ? Ui.GAME_CANDY : Ui.GAME_NONO);
+        refreshNext();
+    }
+
+    // ---------------------------------------------------------------- auto next level
+
+    String gameName(String g) {
+        return "candy".equals(g) ? "Candy Crush" : "nonogram".equals(g) ? "Nonogram" : "Pixel Flow";
+    }
+
+    private void refreshNext() {
+        if (this.next == null || this.nextToggle == null) return;
+        boolean on = this.next.enabled(this.game);
+        int n = this.next.steps(this.game).size();
+        this.nextToggle.setText(on ? "⟳ Next level: ON" : "⟳ Next level: off");
+        tint(this.nextToggle, on ? Ui.ACCENT : C_GREY);
+        boolean builtin = "nonogram".equals(this.game);
+        this.nextTeach.setText(n > 0 ? "Teach (" + n + " step" + (n > 1 ? "s" : "") + ")" : builtin ? "Teach (built-in)" : "Teach next ⚠");
+    }
+
+    /** Shows a message in the current game's info line. */
+    void say(String msg) {
+        refreshNext();
+        if ("candy".equals(this.game)) { setInfo(msg); return; }
+        if ("nonogram".equals(this.game) && this.nono != null) { this.nono.note(msg); return; }
+        try {
+            Method m = TapService.class.getDeclaredMethod("showNote", String.class);
+            m.setAccessible(true);
+            m.invoke(this.svc, msg);
+        } catch (Throwable th) {
+            toast(msg);
+        }
+    }
+
+    void cancelNext() { if (this.next != null) this.next.cancel(); }
+
+    static void cancelAutoNext() { if (current != null) current.cancelNext(); }
+
+    /** Pixel Flow just won a level (called by TapService). */
+    static void pixelFlowWon() {
+        CandyMode c = current;
+        if (c == null || c.dead || !c.next.enabled("pixelflow") || !"pixelflow".equals(c.game)) return;
+        c.levelsDone++;
+        c.next.run("pixelflow", null,
+                f -> com.nickrocks.pixelflowbot.vision.GameState.detectScreen(f) == com.nickrocks.pixelflowbot.vision.GameState.Screen.GAMEPLAY,
+                60_000, c::say,
+                () -> {
+                    c.say("Level " + (c.levelsDone + 1) + " of this run — starting auto-play");
+                    try {
+                        Method m = TapService.class.getDeclaredMethod("startAuto");
+                        m.setAccessible(true);
+                        m.invoke(c.svc);
+                    } catch (Throwable th) {
+                        c.say("Couldn't restart Pixel Flow auto-play: " + th);
+                    }
+                },
+                why -> c.say("Auto-next stopped: " + why));
+    }
+
+    private void candyNext() {
+        if (!this.next.enabled("candy")) return;
+        this.levelsDone++;
+        final int[] exclude = panelRect();
+        this.next.run("candy", null,
+                f -> {
+                    Result r = analyse(f, exclude);
+                    return r.board != null && r.error == null && BoardCheck.problem(r.board, null, 0.0f) == null;
+                },
+                60_000, this::say,
+                () -> {
+                    say("Next level found — starting");
+                    start();
+                },
+                why -> say("Auto-next stopped: " + why));
+    }
+
+    /** Nonogram finished a puzzle. */
+    void nonogramSolved() {
+        if (this.nono == null || !this.next.enabled("nonogram") || !"nonogram".equals(this.game)) return;
+        this.levelsDone++;
+        final com.nickrocks.pixelflowbot.nono.NonoVision v = new com.nickrocks.pixelflowbot.nono.NonoVision();
+        this.next.run("nonogram", com.nickrocks.pixelflowbot.nono.NextButton::find,
+                f -> {
+                    com.nickrocks.pixelflowbot.nono.NonoVision.Reading r = v.readBoard(f);
+                    return r.grid != null && r.toggle >= 0;
+                },
+                90_000, this::say,
+                () -> this.nono.autoStart(),
+                why -> say("Auto-next stopped: " + why));
     }
 
     View panelView() { return this.panel; }
@@ -724,6 +834,7 @@ public final class CandyMode {
 
     /* JADX INFO: Access modifiers changed from: private */
     public void stopEverything() {
+        cancelNext();
         end("stopped by you");
         TapService.stopEverything();
     }
@@ -791,6 +902,7 @@ public final class CandyMode {
                         return;
                     } else {
                         end(str);
+                        candyNext();
                         return;
                     }
                 }
@@ -1148,6 +1260,7 @@ public final class CandyMode {
         if (!this.dead) {
             this.dead = true;
             if (this.nono != null) this.nono.shutdown();
+            if (this.next != null) this.next.shutdown();
             if (this.state != 0 && this.rec != null) {
                 this.rec.line("{\"t\":" + System.currentTimeMillis() + ",\"event\":\"end\",\"why\":\"panel closed\",\"moves\":" + this.moves + "}");
             }

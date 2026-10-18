@@ -381,6 +381,7 @@ public class TapService extends AccessibilityService {
                     + (lastGameplay != null ? "," + Recorder.state(lastGameplay, true) : "") + "}");
             endAuto(outcome.equals("win") ? "level completed!" : outcome.equals("fail") ? "level failed (out of space)"
                     : "a popup or other screen appeared");
+            if (outcome.equals("win")) CandyMode.pixelFlowWon();
             return;
         }
         if (s.board == null) {
@@ -542,7 +543,14 @@ public class TapService extends AccessibilityService {
     // ---------- Stop ----------
 
     /** Stops auto-play and capture, removes the panel and turns this service off. */
+    /** Message from the panel's auto-next helper, shown in the Pixel Flow info line. */
+    private void showNote(String msg) {
+        autoLine = msg;
+        if (reading != null) reading.setText(msg);
+    }
+
     private void stopAll() {
+        CandyMode.cancelAutoNext();
         if (auto) endAuto("stopped by you");
         stopped = true;
         live = false;
