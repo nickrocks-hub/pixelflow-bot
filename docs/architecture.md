@@ -59,69 +59,18 @@ java -cp /tmp/ct NonoProbe tools/nono/samples/*.png  # screen reader on saved fr
 ```
 APK: GitHub Actions `build.yml` (workflow_dispatch on branch `nonogram-mode`).
 
-## Stage 6 — learning on two more games with different mechanics (v1.4)
-Both are in-app simulators so they can train fast and be measured on held-out games. They share
-`core/LabGame` + `core/Lab` (one training/evaluation path), `LabRuntime` (models, training thread,
-evaluation) and `LabActivity` (play, watch, train, evaluate, versions, rollback).
+## v1.5 — external games only
+Built-in practice games (in-app Nonogram, Block Puzzle, Dodge) were removed at the user's request; the app
+now only plays games installed on the phone that you launch from the library.
+- Players: Nonogram.com (`NonogramMode`, `nono/*`) and Candy Crush Saga (`CandyMode`, `candy/*`, `libs/candy-vision.jar`,
+  restored from build 17 and re-hosted on the panel without reflection).
+- Library → profile → ▶ Launch & play: checks the tap service and screen capture (asks for capture), then opens the game.
+  The floating panel follows the game in front (library games only) and never switches while a player is busy.
+- A game you add without a player stays CALIBRATING; its panel says it can't play it and offers 📸 Save screen.
+- A profile you added before its player existed is upgraded in place (your name and objective kept).
+- Measured earlier with the (now removed) Dodge simulator: 50 ms of capture + tap lag already removes most of the
+  skill in a reflex game, so real-time external games are not a realistic target for screen-capture play.
 
-| Game | Mechanic | Pace | Learner inputs |
-|---|---|---|---|
-| Block Puzzle (`game/blocks`) | place pieces on 8×8, clear rows/columns | turn-based | 15 measurements of the board each placement would leave |
-| Dodge (`game/dodge`) | steer between lanes, field speeds up | real-time, 20 ticks/s | 14: obstacle distance in the target lane, drop timing, open neighbours, speed |
-
-### Measured (desktop, same Java, `tools/lab/LabBench`; 100 held-out games; ± = 95% interval)
-Block Puzzle, score (2 training runs, 1000 training games each):
-
-| Player | Score |
-|---|---|
-| Random | 56 ± 6 |
-| Hand-written rule | 976 ± 131 |
-| Learner, untrained (ties → first move) | 141 ± 13 |
-| Learner, 1000 games, run 1 / run 2 | 1107 ± 165 / 1023 ± 151 (best checkpoint 1208 ± 170) |
-
-Dodge, seconds survived (60 s = win; 2 runs, 1500 training games each):
-
-| Player | Seconds |
-|---|---|
-| Random | 3.7 ± 0.1 |
-| Never move | 5.3 ± 0.4 |
-| Hand-written rule | 17.2 ± 1.8 |
-| Learner, untrained | 4.7 ± 0.4 |
-| Learner, 1500 games, run 1 / run 2 | 24.2 ± 2.3 / 24.0 ± 2.2 (checkpoints ranged 16–29 s) |
-
-Dodge with simulated screen-capture + tap lag (seconds survived):
-
-| Lag | Rule | Learner trained without lag | Learner trained with that lag |
-|---|---|---|---|
-| 0 ms | 17.2 | 24.2 | 24.2 |
-| 50 ms | 6.1 | 3.6 | 9.9 |
-| 100 ms | 6.3 | 3.5 | 5.3 |
-| 200 ms | 6.3 | 3.4 | 8.6 |
-| 500 ms | 6.2 | 3.4 | 5.0 |
-
-What this shows, and doesn't:
-- The same learning code improved from near-random to above the hand-written rule on two games with
-  different mechanics. On Block Puzzle the gain over the rule is within the error bars; on Dodge it is clear.
-- Training is not monotonic (Dodge checkpoints 16–29 s): that is why models can be marked stable and rolled back.
-- Lag matters more than the policy for reflex games: 50 ms already removes most of the skill. A phone bot
-  watching a real reflex game through screen capture is unlikely to work unless capture + tap latency is far
-  below that. Turn-based games are unaffected.
-- No game reaches the 60 s / 300-placement caps reliably; the linear model judges one move at a time.
-
-## What generalizes (after stage 6)
-| Component | Generalizes? |
-|---|---|
-| Profiles, observations with sources/confidence, actions, experience store, session guard, model versions/rollback | Yes — used by all 4 games unchanged |
-| Training/evaluation (`Lab`, `LabRuntime`), held-out seeds, baselines interface, UI (`LabActivity`) | Yes for simulated games — Block Puzzle and Dodge share all of it |
-| Linear Q-learning (`learn/`) | Yes, the algorithm; per game you set learning rate/discount/exploration |
-| Features (what the learner looks at) | No — written per game (15 for Block Puzzle, 14 for Dodge, 59 for Nonogram) |
-| Perception from real screens | No — only Nonogram.com has a screen reader |
-| Nonogram (built-in) training screen | Still its own (`NonogramActivity`, older than `Lab`) |
-
-## Stage status (v1.4)
-- Implemented and verified (desktop): both new games' rules, seeds, latency simulation, training,
-  deterministic evaluation (`tools/lab/LabTests`, 20 checks; `CoreTests`, 50 checks), the benchmarks above.
-- Implemented, unverified on a phone: `LabActivity` (touch play, watching, training, evaluation, versions),
-  experience recording of every game there (yours as USER demonstrations).
-- Not yet: learning from demonstrations (they're recorded only), screen perception for any game but
-  Nonogram.com, the on-phone latency measurement, any vision-language model.
+Status: Nonogram.com — verified on real frames (desktop) and used on the phone. Candy Crush — the same code that ran in
+build 17, re-hosted; compiles, not re-tested on a phone in this build. Candy sessions log to Download/AIGameBot but
+are not yet in the experience store. `learn/` (Q-learning core) is kept for future players but no game uses it now.

@@ -64,7 +64,7 @@ public class MainActivity extends Activity {
         root.addView(step("1", "Tap service", "Lets the bot tap and swipe for you, only after you press Solve/Start. Find AI Game Bot under Accessibility → Installed apps.", tapButton));
         capButton = action("Start screen capture", Ui.INFO, v -> requestCapture());
         root.addView(step("2", "Screen capture", "Lets the bot see the game. Choose \"Entire screen\" when asked. Needed again after every app update.", capButton));
-        root.addView(step("3", "Play", "Open the game and use the floating panel. Today that's Nonogram.com: ▶ Solve reads every clue, solves with proven logic and fills it in; ⟳ Next level moves on by itself. Each session is saved as experience in the game's profile.", null));
+        root.addView(step("3", "Play", "Tap a game in the library and press ▶ Launch & play. The floating panel switches to that game. Players today: Nonogram.com and Candy Crush Saga. Other games you add are kept in the library, and the panel tells you honestly that it can't play them yet.", null));
 
         Button stop = action("■  STOP everything", Ui.DANGER, v -> {
             CaptureService.stop(this);
@@ -111,13 +111,13 @@ public class MainActivity extends Activity {
         TextView t = text("AI GAME BOT", 28, Color.WHITE);
         t.setTypeface(Ui.BLACK);
         titles.addView(t);
-        TextView v = text("v1.4 · agent platform · 4 games", 12, 0xCCFFFFFF);
+        TextView v = text("v1.5 · plays the games you launch", 12, 0xCCFFFFFF);
         v.setTypeface(Ui.MONO);
         titles.addView(v);
         top.addView(titles);
         h.addView(top);
 
-        TextView sub = text("A game-playing agent platform. Nonogram is fully supported; other games can be added and start in calibration.", 14, 0xE6FFFFFF);
+        TextView sub = text("Launch a game from your library and let the bot play it. Nonogram.com and Candy Crush Saga have players; add any other game to start setting it up.", 14, 0xE6FFFFFF);
         sub.setPadding(0, dp(14), 0, 0);
         h.addView(sub);
         return h;

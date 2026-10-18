@@ -31,15 +31,7 @@
         </activity>
 
         <activity
-            android:name=".NonogramActivity"
-            android:exported="false" />
-
-        <activity
             android:name=".ProfileActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".LabActivity"
             android:exported="false" />
 
         <service

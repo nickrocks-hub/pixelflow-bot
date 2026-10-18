@@ -99,15 +99,11 @@ public class ProfileActivity extends Activity {
                     + "Real-time games will also need a check that capture rate and tap latency are fast enough."));
         }
         root.addView(st);
-        if ("nonogram-ingame".equals(p.id)) {
-            root.addView(action("Open the game", Ui.GAME_NONO, v -> startActivity(new Intent(this, NonogramActivity.class))));
-        } else if (LabGames.has(p.adapterId)) {
-            root.addView(action("Open the game", Ui.GAME_NONO, v -> startActivity(new Intent(this, LabActivity.class).putExtra(LabActivity.EXTRA_PROFILE, p.id))));
-        } else if (p.packageName != null) {
-            root.addView(action("Open " + p.name, Ui.INFO, v -> {
-                Intent i = getPackageManager().getLaunchIntentForPackage(p.packageName);
-                if (i != null) startActivity(i); else toast("That app isn't installed.");
-            }));
+        if (p.packageName != null) {
+            boolean playable = ad != null;
+            root.addView(action(playable ? "▶  Launch & play" : "Open " + p.name, playable ? Ui.ACCENT : Ui.INFO, v -> launch(p, playable)));
+            root.addView(note(playable ? howTo(p.adapterId)
+                    : "The floating panel will say it can't play this game and offer 📸 Save screen."));
         }
 
         // ---- Objective & pace (user-stated; used by later stages, shown so it can be corrected)
@@ -129,10 +125,6 @@ public class ProfileActivity extends Activity {
         ex.addView(body(s.episodes == 0 && s.steps == 0 ? "Nothing recorded yet."
                 : String.format(Locale.US, "%d episodes · %d steps · total reward %.0f · %.1f KB · last %s",
                 s.episodes, s.steps, s.totalReward, s.bytes / 1024f, s.lastTime == 0 ? "—" : date(s.lastTime))));
-        if ("nonogram-ingame".equals(p.id)) {
-            ex.addView(body("The built-in game trains in memory (replay buffer) and saves models, not every step — thousands of steps a second "
-                    + "would fill the phone. Models and versions are on the game screen."));
-        }
         List<Experience> rec = pl.experience.recent(p.id, 10);
         if (!rec.isEmpty()) {
             StringBuilder sb = new StringBuilder();
@@ -180,6 +172,56 @@ public class ProfileActivity extends Activity {
             ((LinearLayout.LayoutParams) del.getLayoutParams()).topMargin = dp(22);
             root.addView(del);
         }
+    }
+
+    private static final int REQ_CAPTURE = 41;
+    private GameProfile pendingLaunch;
+
+    private static String howTo(String adapterId) {
+        if (Adapters.CANDY_CRUSH.id.equals(adapterId)) {
+            return "Open a level, then press ▶ Start on the floating panel. It pauses on popups and level ends. For ⟳ Next level, press "
+                    + "Teach next once on a level-complete screen and tap the button yourself.";
+        }
+        return "Open a puzzle, then press ▶ Solve on the floating panel. ⟳ Next level moves on by itself.";
+    }
+
+    /** Checks the tap service and screen capture, then opens the game; the panel switches to it. */
+    private void launch(GameProfile p, boolean playable) {
+        if (playable && !TapService.isRunning()) {
+            toast("Turn on the tap service first: find AI Game Bot under Accessibility → Installed apps.");
+            startActivity(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS));
+            return;
+        }
+        if (playable && !CaptureService.isRunning()) {
+            pendingLaunch = p;
+            toast("Allow screen capture (choose \"Entire screen\") so the bot can see the game.");
+            android.media.projection.MediaProjectionManager mpm =
+                    (android.media.projection.MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
+            startActivityForResult(mpm.createScreenCaptureIntent(), REQ_CAPTURE);
+            return;
+        }
+        openApp(p);
+    }
+
+    private void openApp(GameProfile p) {
+        getSharedPreferences(TapService.PREFS, MODE_PRIVATE).edit().putString("active_pkg", p.packageName).apply();
+        Intent i = getPackageManager().getLaunchIntentForPackage(p.packageName);
+        if (i == null) { toast(p.name + " isn't installed."); return; }
+        startActivity(i);
+    }
+
+    @Override
+    protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req != REQ_CAPTURE) return;
+        if (res != RESULT_OK || data == null) { toast("Screen capture not allowed — the bot can't see the game."); return; }
+        startForegroundService(new Intent(this, CaptureService.class)
+                .setAction(CaptureService.ACTION_START)
+                .putExtra(CaptureService.EXTRA_RESULT_CODE, res)
+                .putExtra(CaptureService.EXTRA_DATA, data));
+        GameProfile p = pendingLaunch;
+        pendingLaunch = null;
+        if (p != null) root.postDelayed(() -> openApp(p), 900);
     }
 
     private static String paceText(GameProfile.Pace p) {

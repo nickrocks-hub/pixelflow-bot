@@ -2,5 +2,5 @@
 <resources>
     <string name="app_name">AI GAME BOT</string>
     <string name="accessibility_label">AI Game Bot taps</string>
-    <string name="accessibility_description">Lets AI Game Bot tap and swipe in Nonogram.com when you press Solve, and check which app is in front so it only plays while that game is open. It never taps ads, coins, boosters or purchases.</string>
+    <string name="accessibility_description">Lets AI Game Bot tap and swipe in the game you launched (Nonogram.com, Candy Crush Saga) after you press Start or Solve, and see which app is in front so it only plays while that game is open. It never taps ads, coins, boosters or purchases.</string>
 </resources>

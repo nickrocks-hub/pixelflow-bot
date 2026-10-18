@@ -32,9 +32,12 @@ final class AgentPlatform {
         root = ctx.getFilesDir();
         profiles = new ProfileStore(new File(root, "profiles"));
         experience = new ExperienceStore(new File(root, "experience"));
-        for (GameProfile p : Adapters.builtInProfiles()) {
-            try { profiles.ensure(p); } catch (Exception e) { Log.w(TAG, "couldn't create profile " + p.id, e); }
-        }
+        // Retired built-in practice games from v1.1–v1.4.
+        for (String id : Adapters.RETIRED) { profiles.delete(id); experience.clear(id); }
+        for (String d : new String[]{"ai/nonogram-game", "ai/nonogram-game-assisted", "ai/blocks-sim", "ai/dodge-sim"}) deleteTree(new File(root, d));
+        try {
+            profiles.adoptBuiltIns(Adapters.builtInProfiles());
+        } catch (Exception e) { Log.w(TAG, "couldn't set up the shipped profiles", e); }
     }
 
     /** The current version of a profile; falls back to the shipped default if storage fails. */
@@ -43,5 +46,14 @@ final class AgentPlatform {
         if (p != null) return p;
         for (GameProfile b : Adapters.builtInProfiles()) if (b.id.equals(id)) return b;
         return null;
+    }
+
+    /** The library profile for an installed app, or null if it isn't in the library. */
+    GameProfile profileForPackage(String pkg) { return profiles.forPackage(pkg); }
+
+    private static void deleteTree(File f) {
+        File[] fs = f.listFiles();
+        if (fs != null) for (File x : fs) deleteTree(x);
+        f.delete();
     }
 }

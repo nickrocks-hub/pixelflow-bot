@@ -1,5 +1,4 @@
 import com.nickrocks.pixelflowbot.core.*;
-import com.nickrocks.pixelflowbot.game.nonogram.*;
 import com.nickrocks.pixelflowbot.learn.Agent;
 import com.nickrocks.pixelflowbot.learn.ModelStore;
 import com.nickrocks.pixelflowbot.nono.NonoComAdapter;
@@ -35,7 +34,7 @@ public class CoreTests {
         guard();
         models(new File(tmp, "models"));
         nonoCom(samples, new File(tmp, "exp2"));
-        nonoSim();
+        library(new File(tmp, "lib"));
         System.out.println(pass + " passed, " + fail + " failed");
         if (fail > 0) System.exit(1);
     }
@@ -81,7 +80,7 @@ public class CoreTests {
 
     static void experience(File dir) throws Exception {
         ExperienceStore st = new ExperienceStore(dir);
-        GameProfile p = Adapters.builtInProfiles().get(1);
+        GameProfile p = Adapters.builtInProfiles().get(0);
         p.version = 3;
         RewardModel rm = (b, a, n) -> new RewardModel.Reward(n.intValue("x", 0) - b.intValue("x", 0), "x went up", false, false);
         EpisodeRecorder rec = new EpisodeRecorder(st, p, "PLAY", rm);
@@ -114,7 +113,7 @@ public class CoreTests {
     }
 
     static void guard() {
-        GameProfile p = Adapters.builtInProfiles().get(1);
+        GameProfile p = Adapters.builtInProfiles().get(0);
         SessionGuard g = new SessionGuard();
         SessionGuard.Status s = new SessionGuard.Status();
         s.captureOn = s.controlOn = true;
@@ -174,7 +173,7 @@ public class CoreTests {
     }
 
     static void nonoCom(File samples, File expDir) throws Exception {
-        GameProfile p = Adapters.builtInProfiles().get(1);
+        GameProfile p = Adapters.builtInProfiles().get(0);
         p.version = 1;
         NonoComAdapter ad = new NonoComAdapter();
         StateObservation ch = ad.observe(load(new File(samples, "challenge_10x10.png")), p);
@@ -223,12 +222,40 @@ public class CoreTests {
         return o;
     }
 
-    static void nonoSim() {
-        GameProfile p = Adapters.builtInProfiles().get(0);
-        Puzzle pz = new PuzzleGenerator().get(Puzzle.Split.EVAL, 5, 0);
-        Board b = Board.of(pz);
-        StateObservation s = new NonoSimAdapter().observe(b.observe(4), p);
-        check(s.confidence == 1f && "25".equals(s.value("unknown", "")) && "false".equals(s.value("solved", "")), "built-in board observed exactly");
-        check(!s.toJson().contains("solution"), "no solution in the observation");
+    static void library(File dir) throws Exception {
+        ProfileStore ps = new ProfileStore(dir);
+        // You added Candy Crush before it had a player (v1.4)…
+        GameProfile mine = new GameProfile();
+        mine.name = "Candy Crush Saga";
+        mine.id = ps.freeId(mine.name);
+        mine.packageName = "com.king.candycrushsaga";
+        mine.settings.put("objective", "complete each level's goal");
+        ps.save(mine);
+        GameProfile old = new GameProfile();
+        old.id = "dodge";
+        old.name = "Dodge";
+        old.kind = GameProfile.Kind.BUILT_IN;
+        ps.save(old);
+        // …then v1.5 starts.
+        for (String id : Adapters.RETIRED) ps.delete(id);
+        ps.adoptBuiltIns(Adapters.builtInProfiles());
+        ps.adoptBuiltIns(Adapters.builtInProfiles());   // idempotent
+        GameProfile c = ps.forPackage("com.king.candycrushsaga");
+        check(c != null && "candy-crush-saga".equals(c.id) && "candy-crush".equals(c.adapterId)
+                && c.support == GameProfile.Support.SUPPORTED && "complete each level's goal".equals(c.settings.get("objective")),
+                "your Candy Crush profile gets the player and keeps your objective");
+        check(ps.get("candy-crush") == null, "no duplicate Candy Crush profile");
+        check(ps.get("dodge") == null && ps.get("nonogram-com") != null, "retired built-in game removed, Nonogram.com present");
+        check(ps.list().size() == 2, "library: Nonogram.com + your Candy Crush");
+        check("candy".equals(Adapters.panelKey(c.adapterId)) && "nonogram".equals(Adapters.panelKey("nonogram-com"))
+                && "none".equals(Adapters.panelKey(null)), "panel picks the right player");
+        check(Adapters.forPackage("com.easybrain.nonogram") == Adapters.NONOGRAM_COM && Adapters.forPackage("x.y") == null, "players by package");
+        GameProfile other = new GameProfile();
+        other.name = "Subway Surfers";
+        other.id = ps.freeId(other.name);
+        other.packageName = "com.kiloo.subwaysurf";
+        ps.save(other);
+        check(ps.forPackage("com.kiloo.subwaysurf").support == GameProfile.Support.CALIBRATING, "games without a player stay calibrating");
     }
+
 }

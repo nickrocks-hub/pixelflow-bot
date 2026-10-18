@@ -39,6 +39,35 @@ public final class ProfileStore {
         return out;
     }
 
+    /** The library profile for an app package (one with a player wins), or null. */
+    public synchronized GameProfile forPackage(String pkg) {
+        if (pkg == null) return null;
+        GameProfile found = null;
+        for (GameProfile p : list()) {
+            if (!pkg.equals(p.packageName)) continue;
+            if (found == null || (found.adapterId == null && p.adapterId != null)) found = p;
+        }
+        return found;
+    }
+
+    /**
+     * Makes sure each shipped profile exists. If you already added that app yourself (before it had
+     * a player), your profile gets the player instead — your name and objective are kept.
+     */
+    public synchronized void adoptBuiltIns(List<GameProfile> builtIns) throws IOException {
+        for (GameProfile b : builtIns) {
+            GameProfile mine = b.packageName == null ? get(b.id) : forPackage(b.packageName);
+            if (mine == null) { save(b); continue; }
+            if (b.adapterId != null && !b.adapterId.equals(mine.adapterId)) {
+                mine.adapterId = b.adapterId;
+                mine.support = GameProfile.Support.SUPPORTED;
+                if (mine.pace == GameProfile.Pace.UNKNOWN) mine.pace = b.pace;
+                mine.notes = b.notes;
+                save(mine);
+            }
+        }
+    }
+
     /** Creates the profile only if it doesn't exist yet. */
     public synchronized GameProfile ensure(GameProfile p) throws IOException {
         GameProfile cur = get(p.id);

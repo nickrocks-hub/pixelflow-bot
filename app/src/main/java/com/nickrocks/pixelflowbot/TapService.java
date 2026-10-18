@@ -21,16 +21,22 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 /**
- * Accessibility service for AI Game Bot: the floating panel and the taps/swipes for the
- * Nonogram.com solver ({@link NonogramMode}), plus automatic "next level" ({@link AutoNext}).
+ * Accessibility service for AI Game Bot: the floating panel and the taps/swipes for the games in
+ * your library that have a player — Nonogram.com ({@link NonogramMode}) and Candy Crush Saga
+ * ({@link CandyMode}) — plus automatic "next level" ({@link AutoNext}).
  *
- * Safety: it only acts after you press Solve, only while the game that was in front at that
- * moment is still in front, and STOP turns everything off (panel, capture, this service).
+ * The panel follows the game in front: open a library game (from the app or yourself) and the
+ * panel switches to it. Games without a player get an honest "can't play this yet" panel.
+ *
+ * Safety: it only acts after you press Start/Solve, only while that game is still in front, and
+ * STOP turns everything off (panel, capture, this service).
  */
 public class TapService extends AccessibilityService {
     private static final String TAG = "AIGameBot.Tap";
     public static final String PREFS = "bot";
-    private static final String GAME = "nonogram";
+    /** Which player the panel shows: "nonogram", "candy", "none" (library game without a player) or "idle". */
+    private String active = "idle";
+    private String activePkg, activeName = "";
 
     private static volatile TapService instance;
 
@@ -42,6 +48,10 @@ public class TapService extends AccessibilityService {
     private View nextRow;
     private Button nextToggle;
     private NonogramMode nono;
+    private CandyMode candy;
+    private LinearLayout noneBox;
+    private TextView noneText, brand;
+    private Button teachBtn, forgetBtn;
     private AutoNext next;
     private boolean stopped;
     private int levelsDone;
@@ -90,8 +100,8 @@ public class TapService extends AccessibilityService {
         // Header: brand + status, also the drag handle.
         LinearLayout head = new LinearLayout(this);
         head.setOrientation(LinearLayout.VERTICAL);
-        TextView brand = new TextView(this);
-        brand.setText("⬢ AI GAME BOT · NONOGRAM");
+        brand = new TextView(this);
+        brand.setText("⬢ AI GAME BOT");
         brand.setTextColor(Ui.NEON);
         brand.setTextSize(10);
         brand.setTypeface(Ui.BLACK);
@@ -107,22 +117,45 @@ public class TapService extends AccessibilityService {
 
         next = new AutoNext(this, this);
         LinearLayout nr = new LinearLayout(this);
-        nextToggle = button("", Ui.MUTED, v -> { next.setEnabled(GAME, !next.enabled(GAME)); refreshNext(); });
+        nextToggle = button("", Ui.MUTED, v -> { next.setEnabled(active, !next.enabled(active)); refreshNext(); });
         nr.addView(nextToggle);
+        // Candy Crush's next-level button is taught by you once (it changes between screens).
+        teachBtn = button("Teach next", Ui.MUTED, v -> next.teach(active, this::say));
+        forgetBtn = button("Forget", Ui.MUTED, v -> { next.clearSteps(active); refreshNext(); say("Forgot the taught next-level buttons."); });
+        nr.addView(teachBtn);
+        nr.addView(forgetBtn);
         panel.addView(nr);
         nextRow = nr;
-        refreshNext();
 
         try {
             nono = new NonogramMode(this, this);
             panel.addView(nono.box());
         } catch (Throwable t) {
             Log.e(TAG, "Nonogram mode could not start", t);
-            TextView err = new TextView(this);
-            err.setTextColor(Ui.DANGER);
-            err.setText("Nonogram solver failed to start: " + t);
-            panel.addView(err);
         }
+        try {
+            candy = new CandyMode(this);
+            panel.addView(candy.box());
+        } catch (Throwable t) {
+            Log.e(TAG, "Candy Crush mode could not start", t);
+        }
+        noneBox = new LinearLayout(this);
+        noneBox.setOrientation(LinearLayout.VERTICAL);
+        noneText = new TextView(this);
+        noneText.setTextColor(Ui.TEXT_DIM);
+        noneText.setTextSize(11);
+        noneText.setMaxWidth(dp(300));
+        noneBox.addView(noneText);
+        LinearLayout nb = new LinearLayout(this);
+        nb.addView(button("📸 Save screen", Ui.MUTED, v -> {
+            if (!CaptureService.isRunning()) { toast("Screen capture is off — start it in the app first."); return; }
+            CaptureService.requestSaveFrame();
+        }));
+        nb.addView(button("■ STOP", Ui.DANGER, v -> stopAll()));
+        noneBox.addView(nb);
+        panel.addView(noneBox);
+        String last = getSharedPreferences(PREFS, MODE_PRIVATE).getString("active_pkg", null);
+        setActive(last);
 
         panelParams = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
@@ -157,10 +190,46 @@ public class TapService extends AccessibilityService {
 
     private void refreshNext() {
         if (nextToggle == null) return;
-        boolean on = next.enabled(GAME);
+        boolean playable = active.equals("nonogram") || active.equals("candy");
+        nextRow.setVisibility(playable ? View.VISIBLE : View.GONE);
+        if (!playable) return;
+        boolean on = next.enabled(active);
         nextToggle.setText(on ? "⟳ Next level: ON" : "⟳ Next level: off");
         Ui.tint(nextToggle, on ? Ui.ACCENT : Ui.MUTED, dp(14));
+        boolean taught = active.equals("candy");
+        teachBtn.setVisibility(taught ? View.VISIBLE : View.GONE);
+        forgetBtn.setVisibility(taught ? View.VISIBLE : View.GONE);
+        int n = next.steps(active).size();
+        teachBtn.setText(n > 0 ? "Teach (" + n + " step" + (n > 1 ? "s" : "") + ")" : "Teach next ⚠");
     }
+
+    /** Which library game this package is, and which player handles it. */
+    private void setActive(String pkg) {
+        com.nickrocks.pixelflowbot.core.GameProfile prof = pkg == null ? null : AgentPlatform.get(this).profileForPackage(pkg);
+        String key = prof == null ? "idle" : com.nickrocks.pixelflowbot.core.Adapters.panelKey(prof.adapterId);
+        active = key;
+        activePkg = pkg;
+        activeName = prof == null ? "" : prof.name;
+        if (prof != null) getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString("active_pkg", pkg).apply();
+        if (nono != null) nono.box().setVisibility(key.equals("nonogram") ? View.VISIBLE : View.GONE);
+        if (candy != null) candy.box().setVisibility(key.equals("candy") ? View.VISIBLE : View.GONE);
+        noneBox.setVisibility(key.equals("none") || key.equals("idle") ? View.VISIBLE : View.GONE);
+        if (key.equals("none")) {
+            noneText.setText(activeName + ": no player for this game yet, so the bot won't touch it. "
+                    + "📸 Save screen keeps a screenshot (Pictures/AIGameBot) — send a few, plus a screen recording, to get one built.");
+        } else if (key.equals("idle")) {
+            noneText.setText("Open a game from your library — this panel switches to it.");
+        }
+        brand.setText("⬢ AI GAME BOT" + (activeName.isEmpty() ? "" : " · " + activeName.toUpperCase(java.util.Locale.US)));
+        refreshNext();
+    }
+
+    /** A game's player is mid-move: don't switch the panel under it. */
+    private boolean busy() {
+        return (nono != null && nono.busy()) || (candy != null && candy.busy()) || (next != null && next.busy());
+    }
+
+    AutoNext autoNext() { return next; }
 
     // ------------------------------------------------------------------ host API for NonogramMode / AutoNext
 
@@ -215,23 +284,24 @@ public class TapService extends AccessibilityService {
 
     String foregroundPackage() { return currentPackage(); }
 
-    String gameName(String g) { return "Nonogram"; }
+    String gameName(String g) { return "candy".equals(g) ? "Candy Crush" : "nonogram".equals(g) ? "Nonogram" : g; }
 
     void cancelNext() { if (next != null) next.cancel(); }
 
     void say(String msg) {
         refreshNext();
-        if (nono != null) nono.note(msg);
+        if (active.equals("candy") && candy != null) candy.note(msg);
+        else if (active.equals("nonogram") && nono != null) nono.note(msg);
         else toast(msg);
     }
 
     /** The solver finished a puzzle: press Next Level, wait for the new board, solve it. */
     void nonogramSolved() {
-        if (nono == null || !next.enabled(GAME)) return;
+        if (nono == null || !next.enabled("nonogram") || !active.equals("nonogram")) return;
         levelsDone++;
         nono.parkForNextLevel();
         final com.nickrocks.pixelflowbot.nono.NonoVision v = new com.nickrocks.pixelflowbot.nono.NonoVision();
-        next.run(GAME, com.nickrocks.pixelflowbot.nono.NextButton::find,
+        next.run("nonogram", com.nickrocks.pixelflowbot.nono.NextButton::find,
                 f -> {
                     com.nickrocks.pixelflowbot.nono.NonoVision.Reading r = v.readBoard(f);
                     return r.grid != null && r.toggle >= 0;
@@ -257,6 +327,7 @@ public class TapService extends AccessibilityService {
     private void stopAll() {
         cancelNext();
         if (nono != null) nono.shutdown();
+        if (candy != null) candy.shutdown();
         stopped = true;
         handler.removeCallbacksAndMessages(null);
         CaptureService.requestFrame(null);
@@ -273,7 +344,15 @@ public class TapService extends AccessibilityService {
         }
     }
 
-    @Override public void onAccessibilityEvent(AccessibilityEvent event) { }
+    @Override
+    public void onAccessibilityEvent(AccessibilityEvent event) {
+        if (event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || event.getPackageName() == null) return;
+        String p = event.getPackageName().toString();
+        if (p.equals(getPackageName()) || p.equals("com.android.systemui") || p.equals(activePkg) || panel == null) return;
+        if (AgentPlatform.get(this).profileForPackage(p) == null) return;   // not a library game: keep the panel as is
+        if (busy()) return;                                                 // never switch mid-game
+        setActive(p);
+    }
 
     @Override public void onInterrupt() { }
 
@@ -292,6 +371,7 @@ public class TapService extends AccessibilityService {
     private void cleanup() {
         stopped = true;
         if (nono != null) nono.shutdown();
+        if (candy != null) candy.shutdown();
         if (next != null) next.shutdown();
         handler.removeCallbacksAndMessages(null);
         CaptureService.requestFrame(null);
