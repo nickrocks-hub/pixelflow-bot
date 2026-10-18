@@ -49,6 +49,7 @@ public class TapService extends AccessibilityService {
     private Button nextToggle;
     private NonogramMode nono;
     private CandyMode candy;
+    private InstructionMode instr;
     private LinearLayout noneBox;
     private TextView noneText, brand;
     private Button teachBtn, forgetBtn;
@@ -139,6 +140,12 @@ public class TapService extends AccessibilityService {
         } catch (Throwable t) {
             Log.e(TAG, "Candy Crush mode could not start", t);
         }
+        try {
+            instr = new InstructionMode(this);
+            panel.addView(instr.box());
+        } catch (Throwable t) {
+            Log.e(TAG, "AI vision agent could not start", t);
+        }
         noneBox = new LinearLayout(this);
         noneBox.setOrientation(LinearLayout.VERTICAL);
         noneText = new TextView(this);
@@ -213,20 +220,21 @@ public class TapService extends AccessibilityService {
         if (prof != null) getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString("active_pkg", pkg).apply();
         if (nono != null) nono.box().setVisibility(key.equals("nonogram") ? View.VISIBLE : View.GONE);
         if (candy != null) candy.box().setVisibility(key.equals("candy") ? View.VISIBLE : View.GONE);
-        noneBox.setVisibility(key.equals("none") || key.equals("idle") ? View.VISIBLE : View.GONE);
-        if (key.equals("none")) {
-            noneText.setText(activeName + ": no player for this game yet, so the bot won't touch it. "
-                    + "📸 Save screen keeps a screenshot (Pictures/AIGameBot) — send a few, plus a screen recording, to get one built.");
-        } else if (key.equals("idle")) {
-            noneText.setText("Open a game from your library — this panel switches to it.");
+        boolean ai = key.equals("none") && instr != null;
+        if (instr != null) {
+            instr.box().setVisibility(ai ? View.VISIBLE : View.GONE);
+            if (ai) instr.setProfile(prof);
         }
+        noneBox.setVisibility(key.equals("idle") || (key.equals("none") && !ai) ? View.VISIBLE : View.GONE);
+        noneText.setText(key.equals("idle") ? "Open a game from your library — this panel switches to it."
+                : activeName + ": no player for this game, and the AI vision agent couldn't start.");
         brand.setText("⬢ AI GAME BOT" + (activeName.isEmpty() ? "" : " · " + activeName.toUpperCase(java.util.Locale.US)));
         refreshNext();
     }
 
     /** A game's player is mid-move: don't switch the panel under it. */
     private boolean busy() {
-        return (nono != null && nono.busy()) || (candy != null && candy.busy()) || (next != null && next.busy());
+        return (nono != null && nono.busy()) || (candy != null && candy.busy()) || (instr != null && instr.busy()) || (next != null && next.busy());
     }
 
     AutoNext autoNext() { return next; }
@@ -292,6 +300,7 @@ public class TapService extends AccessibilityService {
         refreshNext();
         if (active.equals("candy") && candy != null) candy.note(msg);
         else if (active.equals("nonogram") && nono != null) nono.note(msg);
+        else if (active.equals("none") && instr != null) instr.note(msg);
         else toast(msg);
     }
 
@@ -328,6 +337,7 @@ public class TapService extends AccessibilityService {
         cancelNext();
         if (nono != null) nono.shutdown();
         if (candy != null) candy.shutdown();
+        if (instr != null) instr.shutdown();
         stopped = true;
         handler.removeCallbacksAndMessages(null);
         CaptureService.requestFrame(null);
@@ -372,6 +382,7 @@ public class TapService extends AccessibilityService {
         stopped = true;
         if (nono != null) nono.shutdown();
         if (candy != null) candy.shutdown();
+        if (instr != null) instr.shutdown();
         if (next != null) next.shutdown();
         handler.removeCallbacksAndMessages(null);
         CaptureService.requestFrame(null);

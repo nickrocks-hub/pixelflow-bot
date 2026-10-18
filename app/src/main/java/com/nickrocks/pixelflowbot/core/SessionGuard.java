@@ -14,6 +14,8 @@ import java.util.Locale;
 public final class SessionGuard {
     public float minConfidence = 0.6f;
     public int maxNoEffect = 4;
+    /** Screens the agent may act on. Default: gameplay only. A walk-through agent also allows menus and level ends. */
+    public final java.util.Set<StateObservation.Screen> playable = java.util.EnumSet.of(StateObservation.Screen.GAMEPLAY);
 
     public static final class Status {
         public boolean stopRequested;
@@ -39,8 +41,8 @@ public final class SessionGuard {
         if (s.latest.screen == StateObservation.Screen.BLOCKED) {
             return "an unrelated screen (ad, purchase, login or dialog) is showing" + (s.latest.problem != null ? ": " + s.latest.problem : "");
         }
-        if (s.latest.screen != StateObservation.Screen.GAMEPLAY) {
-            return "not on a gameplay screen (" + s.latest.screen.name().toLowerCase(Locale.US) + ")";
+        if (!playable.contains(s.latest.screen)) {
+            return "not on a screen it may act on (" + s.latest.screen.name().toLowerCase(Locale.US) + ")";
         }
         if (s.latest.confidence < minConfidence) {
             return String.format(Locale.US, "not sure what's on screen (confidence %.2f < %.2f)", s.latest.confidence, minConfidence);

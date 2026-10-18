@@ -10,8 +10,8 @@ android {
         applicationId 'com.nickrocks.pixelflowbot'
         minSdk 26
         targetSdk 34
-        versionCode 22
-        versionName '1.5'
+        versionCode 23
+        versionName '1.6'
     }
 
     // Committed debug key, so every build from GitHub installs as an update.

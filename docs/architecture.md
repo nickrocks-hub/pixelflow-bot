@@ -59,6 +59,31 @@ java -cp /tmp/ct NonoProbe tools/nono/samples/*.png  # screen reader on saved fr
 ```
 APK: GitHub Actions `build.yml` (workflow_dispatch on branch `nonogram-mode`).
 
+## v1.6 — AI vision agent for any game (opt-in, your Anthropic API key)
+Games without a built-in player are played from **your written instructions** by a vision-language model:
+- `core/vlm/ClaudeVision`: Claude Messages API (`POST /v1/messages`, `anthropic-version: 2023-06-01`), one base64 JPEG
+  screenshot (540 px wide ≈ 900 image tokens) + text, `output_config.effort = low`. Key typed in the app, stored privately.
+- `core/vlm/InstructionAgent`: calibration (screen type, board rectangle, controls, HUD, goal, questions for you) and per-step
+  decisions (screen, what changed, last action's effect, next tap/long press/swipe/drag/wait/stop + reason + confidence).
+  Coordinates are scaled from the screenshot to the screen. Refuses off-screen points, status/navigation bars, and any ad,
+  purchase, login or dialog screen (pauses for you). Budget per session and calls-per-minute limit.
+- Session memory: the last 8 steps go back into each prompt. Rule learning: every 25 steps and at the end, the model condenses
+  the session into ≤ 8 rules with evidence (step numbers), saved in the profile, shown and editable — labelled as hypotheses.
+  Not reinforcement learning: no weights are trained.
+- Calibration is only treated as fact after you confirm (or edit) it on the profile page.
+- Experience: every step stored (state facts, action + timing, reward = the model's own report of the effect, labelled unverified).
+- `InstructionMode` runs it on the floating panel; `AiSettingsActivity` holds consent, key, model (Haiku 5.5 $0.10/$0.50 per
+  MTok ≈ $0.0005/step; Sonnet 5.5 $2/$10 ≈ $0.01/step), budget, rate, settle time, and a "Test connection" call.
+
+Verified: `tools/core/VisionTests` (34 checks, fake model: request shape, reply parsing, scaling, refusals, budget, rate limit,
+memory, rule learning, calibration). Not verified: a live call to the API (no key in this environment) and play on a phone.
+Limits: a few seconds per step → puzzles, turn-based games and menus only; model coordinates are approximate.
+
+## Candy Crush board shapes (v1.6)
+`candy/BoardShape` extends the detected grid to every island on the same lattice and finds narrow boards; synthetic test
+(`tools/candy/CandyShapes`): original detector 5/10 shapes, now 10/10 with every cell right. Fixed a decompiled loop in
+`CandySolver` that never exited, hanging the solver on any matching move.
+
 ## v1.5 — external games only
 Built-in practice games (in-app Nonogram, Block Puzzle, Dodge) were removed at the user's request; the app
 now only plays games installed on the phone that you launch from the library.

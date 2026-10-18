@@ -83,8 +83,11 @@ public class ProfileActivity extends Activity {
         // ---- Status
         root.addView(section("STATUS"));
         LinearLayout st = card();
-        TextView chip = text(p.support == GameProfile.Support.SUPPORTED ? "● Supported" : p.support == GameProfile.Support.CALIBRATING ? "● Calibrating" : "● Not supported",
-                14, p.support == GameProfile.Support.SUPPORTED ? 0xFF5EEAD4 : 0xFFFCD34D);
+        CloudSettings cs = new CloudSettings(this);
+        boolean calibrated = "yes".equals(p.settings.get("calibration_confirmed"));
+        TextView chip = text(p.support == GameProfile.Support.SUPPORTED ? "● Built-in player"
+                        : !cs.ready() ? "● AI vision agent — needs setup" : calibrated ? "● AI vision agent — calibrated" : "● AI vision agent — needs calibration",
+                14, p.support == GameProfile.Support.SUPPORTED || (cs.ready() && calibrated) ? 0xFF5EEAD4 : 0xFFFCD34D);
         chip.setTypeface(Ui.MEDIUM);
         st.addView(chip);
         if (ad != null) {
@@ -92,31 +95,72 @@ public class ProfileActivity extends Activity {
             st.addView(body("Works: " + ad.works));
             st.addView(body("Limits: " + ad.limits));
         } else {
-            st.addView(body("Nothing in this app understands this game yet, so the agent won't touch it. "
-                    + "What exists for it today: this profile (saved and versioned), your objective and pace below, and an experience store."));
-            st.addView(body("Not built yet (later stages): watching the screen to calibrate the board and controls, "
-                    + "rule hypotheses with evidence, recording your demonstrations, and a learning or planning backend. "
-                    + "Real-time games will also need a check that capture rate and tap latency are fast enough."));
+            st.addView(body("No built-in player, so this game is played by the AI vision agent: it looks at the screen, reads your "
+                    + "instructions below, works out the board and controls (🔍 Calibrate), then plays step by step and keeps notes on what it learns."));
+            st.addView(body("It uses Anthropic's Claude API with your own key — opt-in, with a budget per session. Each step takes a few seconds, "
+                    + "so it suits puzzles, turn-based games and menus, not reflex games. It never taps ads, purchases or sign-ins."));
+            st.addView(small(cs.ready() ? "AI vision agent settings (" + cs.model().id + ")" : "Set up the AI vision agent", cs.ready() ? Ui.MUTED : Ui.INFO,
+                    v -> startActivity(new Intent(this, AiSettingsActivity.class))));
         }
         root.addView(st);
         if (p.packageName != null) {
-            boolean playable = ad != null;
+            boolean playable = ad != null || cs.ready();
             root.addView(action(playable ? "▶  Launch & play" : "Open " + p.name, playable ? Ui.ACCENT : Ui.INFO, v -> launch(p, playable)));
-            root.addView(note(playable ? howTo(p.adapterId)
-                    : "The floating panel will say it can't play this game and offer 📸 Save screen."));
+            root.addView(note(ad != null ? howTo(p.adapterId) : cs.ready()
+                    ? "On a game screen press 🔍 Calibrate on the floating panel, confirm the result below, then ▶ Start."
+                    : "Set up the AI vision agent first; until then the panel can only save screenshots."));
         }
 
-        // ---- Objective & pace (user-stated; used by later stages, shown so it can be corrected)
-        root.addView(section("WHAT YOU SAY THE GAME IS"));
+        // ---- Instructions (the owner's words; the AI vision agent follows them)
+        root.addView(section("YOUR INSTRUCTIONS FOR THE AI"));
         LinearLayout ob = card();
         String objective = p.settings.get("objective");
-        ob.addView(body("Objective (your words): " + (objective == null || objective.isEmpty() ? "not set" : objective)));
+        ob.addView(body(objective == null || objective.isEmpty()
+                ? "Not written yet. Describe the goal, how you play (tap / swipe / drag what), what to avoid, and how to start or continue a level."
+                : objective));
         ob.addView(body("Pace: " + paceText(p.pace)));
         LinearLayout row = new LinearLayout(this);
-        row.addView(small("Edit objective", Ui.MUTED, v -> editObjective(p)), weight());
+        row.addView(small("Edit instructions", Ui.MUTED, v -> editObjective(p)), weight());
         row.addView(small("Change pace", Ui.MUTED, v -> editPace(p)), weight());
         ob.addView(row);
         root.addView(ob);
+
+        // ---- Calibration and learned rules (AI vision agent)
+        if (ad == null) {
+            root.addView(section("CALIBRATION (FROM THE SCREEN)"));
+            LinearLayout cc = card();
+            String cal = p.settings.get("calibration");
+            if (cal == null || cal.isEmpty()) {
+                cc.addView(body("Not calibrated yet. Open the game, then press 🔍 Calibrate on the floating panel: the agent describes the screen, "
+                        + "the board, the controls and the goal, and asks about anything it can't work out."));
+            } else {
+                cc.addView(body(cal));
+                String q = p.settings.get("calibration_questions");
+                if (q != null && !q.isEmpty()) cc.addView(body("Questions for you — answer them in your instructions:\n• " + q.replace("\n", "\n• ")));
+                cc.addView(note(calibrated ? "✓ Confirmed by you. The agent treats this as known." : "Proposed by the model (confidence "
+                        + p.settings.get("calibration_confidence") + "). Not used as fact until you confirm it."));
+                LinearLayout cr = new LinearLayout(this);
+                if (!calibrated) cr.addView(small("✓ Confirm", Ui.ACCENT, v -> { p.settings.put("calibration_confirmed", "yes"); save(p); }), weight());
+                cr.addView(small("Edit", Ui.MUTED, v -> editSetting(p, "calibration", "Correct the calibration", true)), weight());
+                cr.addView(small("Clear", Ui.DANGER, v -> { p.settings.remove("calibration"); p.settings.remove("calibration_confirmed");
+                    p.settings.remove("calibration_questions"); save(p); }), weight());
+                cc.addView(cr);
+            }
+            root.addView(cc);
+
+            root.addView(section("WHAT IT HAS LEARNED (HYPOTHESES)"));
+            LinearLayout lc = card();
+            String learned = p.settings.get("learned");
+            lc.addView(body(learned == null || learned.isEmpty() ? "Nothing yet. After 25 steps and at the end of each session the agent writes down "
+                    + "the rules it believes, each with the steps that support it." : learned));
+            lc.addView(note("Rule learning: notes kept by the model and fed into later sessions. It is not a trained policy — no weights are learned. "
+                    + "Edit or clear anything that's wrong."));
+            LinearLayout lr = new LinearLayout(this);
+            lr.addView(small("Edit", Ui.MUTED, v -> editSetting(p, "learned", "Edit what it learned", false)), weight());
+            lr.addView(small("Clear", Ui.DANGER, v -> { p.settings.remove("learned"); save(p); }), weight());
+            lc.addView(lr);
+            root.addView(lc);
+        }
 
         // ---- Experience
         root.addView(section("EXPERIENCE ON THIS PHONE"));
@@ -232,11 +276,25 @@ public class ProfileActivity extends Activity {
         }
     }
 
+    private void editSetting(GameProfile p, String key, String title, boolean resetsConfirm) {
+        EditText et = new EditText(this);
+        et.setText(p.settings.get(key) == null ? "" : p.settings.get(key));
+        et.setMinLines(4);
+        new AlertDialog.Builder(this).setTitle(title).setView(et)
+                .setPositiveButton("Save", (d, w) -> {
+                    p.settings.put(key, et.getText().toString().trim());
+                    if (resetsConfirm) p.settings.put("calibration_confirmed", "yes");   // your correction is the truth
+                    save(p);
+                }).setNegativeButton("Cancel", null).show();
+    }
+
     private void editObjective(GameProfile p) {
         EditText et = new EditText(this);
         et.setText(p.settings.get("objective") == null ? "" : p.settings.get("objective"));
-        et.setHint("e.g. clear all blocks without running out of moves");
-        new AlertDialog.Builder(this).setTitle("What is the goal?").setView(et)
+        et.setHint("e.g. Swap two neighbouring candies to make 3 in a row. Finish the level's goal (shown at the top) before moves run out. "
+                + "Tap Play / Continue between levels. Never use boosters or buy anything.");
+        et.setMinLines(5);
+        new AlertDialog.Builder(this).setTitle("Instructions for the AI").setView(et)
                 .setPositiveButton("Save", (d, w) -> {
                     p.settings.put("objective", et.getText().toString().trim());
                     save(p);
