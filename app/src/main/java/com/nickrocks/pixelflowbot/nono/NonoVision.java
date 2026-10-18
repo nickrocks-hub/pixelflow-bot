@@ -44,7 +44,8 @@ public final class NonoVision {
         public String worstWhere = "";
         public float toggleX = -1, toggleY = -1; // centre of the fill (square) icon
         public int toggle = -1;                  // 1 = fill mode on, 0 = cross mode on, -1 = not found
-        public int redCells;
+        public int redCells;                     // cells showing the game's red "mistake" mark
+        public int hearts = -1;                  // red hearts (lives) under the title, -1 if not seen
         public String splitAt;                   // where a number looked split into separate digits                     // cells showing the game's red "mistake" mark
         public String error;                     // non-null when the frame couldn't be read
         public long ms;
@@ -116,6 +117,7 @@ public final class NonoVision {
             out.grid = g;
             out.cells = readCells(f, g);
             out.redCells = countRed(f, g);
+            out.hearts = countHearts(f, g);
             readClues(f, g, out);
             findToggle(f, g, out);
             if (out.error == null) out.error = checkClues(out);
@@ -138,6 +140,7 @@ public final class NonoVision {
             out.grid = g;
             out.cells = readCells(f, g);
             out.redCells = countRed(f, g);
+            out.hearts = countHearts(f, g);
             findToggle(f, g, out);
         } catch (Throwable t) {
             out.error = "read error: " + t;
@@ -333,6 +336,35 @@ public final class NonoVision {
             }
         }
         return cells;
+    }
+
+    /** Red hearts (255,39,47) in the band between the title and the grid; lost hearts turn grey. */
+    static int countHearts(Frame f, Grid g) {
+        int y0 = (int) (f.h * 0.07f), y1 = Math.min((int) (f.h * 0.16f), g.top - 10);
+        // Count on the row with the most red: the hearts' widest line (the top rows split each
+        // heart into two lobes).
+        int bestRow = -1, bestRed = 0;
+        for (int y = Math.max(0, y0); y < y1; y += 2) {
+            int red = 0;
+            for (int x = 0; x < f.w; x += 2) if (heartRed(f.px[y * f.w + x])) red++;
+            if (red > bestRed) { bestRed = red; bestRow = y; }
+        }
+        if (bestRow < 0 || bestRed < 10) return 0;
+        int count = 0, last = -100, start = -1;
+        for (int x = 0; x <= f.w; x++) {
+            boolean red = x < f.w && heartRed(f.px[bestRow * f.w + x]);
+            if (red) {
+                if (x - last > 6) { if (start >= 0 && last - start > f.w / 60) count++; start = x; }
+                last = x;
+            }
+        }
+        if (start >= 0 && last - start > f.w / 60) count++;
+        return count;
+    }
+
+    static boolean heartRed(int p) {
+        int r = (p >> 16) & 0xff, g = (p >> 8) & 0xff, b = p & 0xff;
+        return r > 200 && g < 100 && b < 110;
     }
 
     /** Cells containing clearly red ink (the game's mistake marker). */

@@ -61,6 +61,17 @@ public class MainActivity extends Activity {
         root.addView(step("3", "Pick a game", "Use the ◆ game button on the floating panel to switch, open the game, then press Start / Solve.", null));
         root.addView(step("4", "Next level, automatically", "⟳ Next level: ON makes the bot press Continue / Next / Play after each win. Nonogram and Amaze GO work out of the box. For Pixel Flow and Candy Crush, on the first level-complete screen press Teach next and tap the button yourself (and again on any screen that follows). It only presses a taught button when that exact button is showing, so it never taps ads, offers or fail screens.", null));
 
+        root.addView(section("LEARNING AGENT"));
+        LinearLayout ai = card();
+        TextView aiT = text("🧠 AI Lab", 18, Ui.TEXT);
+        aiT.setTypeface(Ui.BLACK);
+        ai.addView(aiT);
+        TextView aiB = text("An agent that observes, acts, gets rewards, stores its experience and trains itself. Train it in the simulator, measure it, save versions — then let it play Nonogram.com from the panel (◆ Nonogram AI 🧠).", 13, Ui.TEXT_DIM);
+        aiB.setPadding(0, dp(6), 0, dp(10));
+        ai.addView(aiB);
+        ai.addView(action("Open AI Lab", Ui.GAME_AI, v -> startActivity(new Intent(this, LearnActivity.class))));
+        root.addView(ai);
+
         root.addView(section("GAMES"));
         root.addView(game(Ui.GAME_AMAZE, "Amaze GO", "NEW",
                 "Traces every arrow, taps only the ones with a completely clear way out (so it never loses a drop), several at once, zooms out big boards and moves on to the next level by itself."));
@@ -138,7 +149,7 @@ public class MainActivity extends Activity {
         TextView t = text("PixelFlow Bot", 28, Color.WHITE);
         t.setTypeface(Ui.BLACK);
         titles.addView(t);
-        TextView v = text("v0.9.3 · game auto-players", 12, 0xCCFFFFFF);
+        TextView v = text("v1.0 · game auto-players + AI", 12, 0xCCFFFFFF);
         v.setTypeface(Ui.MONO);
         titles.addView(v);
         top.addView(titles);

@@ -192,7 +192,7 @@ public final class NonoSolver {
      * Exact line solver. Returns the line with every cell that is the same in all valid placements
      * filled in, or null if no placement fits.
      */
-    static int[] solveLine(int[] clue, int[] known, int n) {
+    public static int[] solveLine(int[] clue, int[] known, int n) {
         if (clue == null) return java.util.Arrays.copyOf(known, n);   // hidden clue: anything goes
         int k = clue.length;
         // zeros[i] = number of known-empty cells in [0, i)
