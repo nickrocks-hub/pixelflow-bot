@@ -33,7 +33,7 @@ Home screen → **▦ Nonogram game → Play Nonogram**.
   already seen this episode.
 - **Training environment** (NonogramEnv.java) uses the hidden solution only to compute rewards and scores
   (an outside game like Nonogram.com may give no such feedback):
-  correct fill +1, correct ✕ +MARK, wrong fill/✕ WRONG, fixing a wrong cell +0.5, clearing a right cell −1,
+  correct fill +1, correct ✕ +1, wrong fill/✕ −5 (like losing a heart), fixing a wrong cell +0.5, clearing a right cell −1,
   no-change −0.5, repeated position −0.5, invalid −1, solved +10, step limit (3×cells) −5.
 
 ## Agents — kept separate
@@ -49,8 +49,22 @@ Every AI move on screen is labelled with its source; solver output is never show
 Loop guard: a fill/✕ the learner made and then cleared isn't offered again while it's in its recent actions.
 
 ## Measured (desktop, same code: `tools/learn/NonogramGameBench.java`)
-See the results table in the README section of the v1.1 commit / chat; re-run with
-`java -cp … NonogramGameBench <episodes>`.
+Evaluation puzzles only (never trained on); learners trained 1000 × 5×5, then +1000 × 5/10, then +1000 × 5/10/15.
+
+| Player | 5×5 solved | 10×10 solved | 15×15 solved | mistakes / 10×10 |
+|---|---|---|---|---|
+| Random | 0% | 0% | 0% | 50 |
+| Constraint solver (baseline) | 100% | 100% | 100% | 0 |
+| Learner, untrained | 0% | 0% | 0% | 76 |
+| Learner, 3000 training puzzles | 98% | 73% | 45% | 4.1 |
+| Learner + solver hints, untrained | 0% | 0% | 0% | 91 |
+| Learner + solver hints, 3000 puzzles | 100% | 100% | 100% | 0 |
+
+Reward choice: with ✕ worth +0.3 and mistakes −2, guessing paid off and 10×10 reached only 40–52%;
+with ✕ +1 and mistakes −5 the pure learner reached 65–85% on the same budget (2 seeds each).
+The solver-assisted learner reaching 100% mostly shows it learned to trust the solver's input — that's
+why it's labelled and kept separate. The pure learner's numbers are what it learned on its own.
+Re-run: `java -cp … NonogramGameBench <episodes> [modelDir]` (build line in the file header).
 
 ## Shared architecture
 `learn/` (Agent, LinearQ, ReplayBuffer, ModelStore, SimRunner, GameAdapter, Env) is game-independent.

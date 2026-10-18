@@ -17,8 +17,8 @@ import java.util.Set;
  *
  * Rewards:
  *   fill a cell that is filled in the answer       +1.0
- *   mark empty a cell that is empty in the answer  +0.3
- *   fill / mark against the answer                 −2.0   (counted as a mistake)
+ *   mark empty a cell that is empty in the answer  +1.0
+ *   fill / mark against the answer                 −5.0   (counted as a mistake, like losing a heart)
  *   clear a cell that was wrong                    +0.5   (fixing a mistake)
  *   clear a cell that was right                    −1.0
  *   action that changes nothing                    −0.5   (repeat, no progress)
@@ -28,7 +28,7 @@ import java.util.Set;
  *   step limit reached                             −5, episode ends
  */
 public final class NonogramEnv implements Env<Observation> {
-    public static float R_FILL_OK = 1f, R_MARK_OK = 0.3f, R_WRONG = -2f, R_FIX = 0.5f, R_UNDO_RIGHT = -1f,
+    public static final float R_FILL_OK = 1f, R_MARK_OK = 1f, R_WRONG = -5f, R_FIX = 0.5f, R_UNDO_RIGHT = -1f,
             R_NO_CHANGE = -0.5f, R_LOOP = -0.5f, R_INVALID = -1f, R_SOLVED = 10f, R_TIMEOUT = -5f;
     public static final int HISTORY = 16;
 

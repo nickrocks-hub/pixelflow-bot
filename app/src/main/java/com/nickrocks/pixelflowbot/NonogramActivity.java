@@ -206,7 +206,7 @@ public class NonogramActivity extends Activity {
         weightsText.setPadding(dp(4), 0, 0, 0);
         tc.addView(weightsText);
         tc.addView(note("Trains only on the training puzzles. The training environment uses the hidden answer to give rewards "
-                + "(correct fill +1, correct ✕ +0.3, wrong −2, solved +10); the agent itself only ever sees clues and cells. "
+                + "(correct fill or ✕ +1, wrong −5, solved +10); the agent itself only ever sees clues and cells. "
                 + "“Learner + solver hints” is also given the single-line solver's verdict as input and is saved as a separate model."));
         root.addView(tc);
 
