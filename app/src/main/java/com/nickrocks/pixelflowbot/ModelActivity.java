@@ -72,7 +72,8 @@ public class ModelActivity extends Activity {
         mc.addView(modelText);
         mc.addView(body("The app can't download a model (it never goes online), so you put one on the phone yourself, once:\n"
                 + "1. In a browser, open huggingface.co/google/gemma-3n-E2B-it-litert-lm (accept Google's Gemma licence, free).\n"
-                + "2. Download the .litertlm file (about 3 GB) into your phone's Downloads.\n"
+                + "2. Under \"Files and versions\", download gemma-3n-E2B-it-int4.litertlm (3.66 GB) into your phone's Downloads. "
+                + "Not the \"-Web\" file (that one is for web browsers) and not the \"mediatek\" one (only for certain MediaTek chips).\n"
                 + "3. Press Import below and choose it. It is copied into the app; you can delete the download afterwards.\n"
                 + "Any LiteRT-LM model that accepts images works. Gemma 3n E4B (about 4.4 GB) is more accurate but slower and needs more memory."));
         pickBtn = small("Import model file…", Ui.ACCENT, v -> pick());
@@ -163,6 +164,11 @@ public class ModelActivity extends Activity {
             toast("That isn't a .litertlm model file (" + name + ").");
             return;
         }
+        String low = name.toLowerCase(Locale.US);
+        if (low.contains("-web")) {
+            toast("That's the web-browser version (" + name + "); it doesn't run on Android. Download gemma-3n-E2B-it-int4.litertlm instead.");
+            return;
+        }
         File dir = ls.modelDir();
         long free = new StatFs(dir.getPath()).getAvailableBytes();
         if (size > 0 && free < size + 200L * 1024 * 1024) {
@@ -235,7 +241,10 @@ public class ModelActivity extends Activity {
                         was ? "" : String.format(Locale.US, " (loaded in %.1f s)", LocalVision.getLoadMs() / 1000.0),
                         r.text.trim().length() > 40 ? r.text.trim().substring(0, 40) + "…" : r.text.trim(), r.ms / 1000.0);
             } catch (Throwable e) {
-                msg = "✗ " + e.getMessage() + "\nIf the phone ran out of memory, close other apps or try a smaller model.";
+                String em = String.valueOf(e.getMessage());
+                msg = "✗ " + em + (em.contains("magic number")
+                        ? "\nThis file isn't an Android LiteRT-LM model (the \"-Web\" version is for browsers). Delete it and import gemma-3n-E2B-it-int4.litertlm."
+                        : "\nIf the phone ran out of memory, close other apps or try a smaller model.");
             }
             final String m = msg;
             handler.post(() -> { testResult.setText(m); refresh(); });
