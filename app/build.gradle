@@ -50,6 +50,6 @@ dependencies {
     implementation files('libs/candy-vision.jar')
     // On-device vision-language model runtime (Google LiteRT-LM). Runs models on the phone; the app
     // has no internet permission, so nothing can be sent anywhere.
-    implementation 'com.google.ai.edge.litertlm:litertlm-android:latest.release'
+    implementation 'com.google.ai.edge.litertlm:litertlm-android:0.18.0'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
 }
