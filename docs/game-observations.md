@@ -46,6 +46,12 @@ Characters: same colors incl. black (Level 25). Shot counts seen: 1 to 50.
 - Log: Download/PixelFlowBot/pfbot_*.txt (JSON lines: moves with state, level_end outcome guess).
 - Replayed on recordings (decisions only, no game simulation). Not yet tested on the phone.
 
+## Game log 1 (v0.3, Level 25, lost after 16 moves)
+- App package: com.loomgames.pixelflow.
+- Grid misread (35x38 -> 33x36; true 35x41) because the box-based fit drifted mid-level.
+- Several same-colour characters sent together; leftovers (K1, K1, K2, B9, Y8) filled the slots.
+- Fixed in v0.4: grid from cube spacing (same on every recorded frame, any point in a level), cubes must be seen in 2 reads (filters shots), planner v2 (in-flight shots per colour, slots first, clean moves preferred, calculated risk when no safe move, as the user did in Level 24).
+
 ## Board reader status (Python prototype)
 - tools/board_reader.py: calibrates grid once per level from the full board (frequency fit of cube spacing), then reads every cube color.
 - Tested on Level 24 start, Level 24 mid-level (with cleared cubes) and Level 25 start: redrawn boards match the screenshots.
