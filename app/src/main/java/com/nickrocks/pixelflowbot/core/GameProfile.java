@@ -93,8 +93,8 @@ public final class GameProfile {
         switch (support) {
             case SUPPORTED: return "Supported · adapter " + adapterId;
             case UNSUPPORTED: return "Not supported";
-            default: return "yes".equals(settings.get("calibration_confirmed")) ? "AI vision agent · calibrated"
-                    : settings.containsKey("calibration") ? "AI vision agent · calibration to confirm" : "AI vision agent · not calibrated yet";
+            default: return "yes".equals(settings.get("calibration_confirmed")) ? "On-device AI · calibrated"
+                    : settings.containsKey("calibration") ? "On-device AI · calibration to confirm" : "On-device AI · not calibrated yet";
         }
     }
 }

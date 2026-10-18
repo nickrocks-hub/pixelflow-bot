@@ -144,7 +144,7 @@ public class TapService extends AccessibilityService {
             instr = new InstructionMode(this);
             panel.addView(instr.box());
         } catch (Throwable t) {
-            Log.e(TAG, "AI vision agent could not start", t);
+            Log.e(TAG, "on-device AI could not start", t);
         }
         noneBox = new LinearLayout(this);
         noneBox.setOrientation(LinearLayout.VERTICAL);
@@ -227,7 +227,7 @@ public class TapService extends AccessibilityService {
         }
         noneBox.setVisibility(key.equals("idle") || (key.equals("none") && !ai) ? View.VISIBLE : View.GONE);
         noneText.setText(key.equals("idle") ? "Open a game from your library — this panel switches to it."
-                : activeName + ": no player for this game, and the AI vision agent couldn't start.");
+                : activeName + ": no player for this game, and the on-device AI couldn't start.");
         brand.setText("⬢ AI GAME BOT" + (activeName.isEmpty() ? "" : " · " + activeName.toUpperCase(java.util.Locale.US)));
         refreshNext();
     }

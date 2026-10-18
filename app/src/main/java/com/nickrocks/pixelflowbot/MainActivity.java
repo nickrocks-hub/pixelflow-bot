@@ -57,7 +57,7 @@ public class MainActivity extends Activity {
         libraryBox.setOrientation(LinearLayout.VERTICAL);
         root.addView(libraryBox);
         root.addView(action("＋  Add a game", Ui.MUTED, v -> AddGame.start(this)));
-        root.addView(action("🧠  AI vision agent (for games without a player)", Ui.INFO, v -> startActivity(new Intent(this, AiSettingsActivity.class))));
+        root.addView(action("🧠  On-device AI (for games without a player)", Ui.INFO, v -> startActivity(new Intent(this, ModelActivity.class))));
 
         root.addView(section("PERMISSIONS FOR GAMES ON YOUR SCREEN"));
         tapButton = action("Turn on the tap service", Ui.ACCENT,
@@ -65,7 +65,7 @@ public class MainActivity extends Activity {
         root.addView(step("1", "Tap service", "Lets the bot tap and swipe for you, only after you press Solve/Start. Find AI Game Bot under Accessibility → Installed apps.", tapButton));
         capButton = action("Start screen capture", Ui.INFO, v -> requestCapture());
         root.addView(step("2", "Screen capture", "Lets the bot see the game. Choose \"Entire screen\" when asked. Needed again after every app update.", capButton));
-        root.addView(step("3", "Play", "Tap a game in the library and press ▶ Launch & play. The floating panel switches to that game. Built-in players: Nonogram.com and Candy Crush Saga. Any other game you add is played by the AI vision agent from the instructions you write in its profile (opt-in, your Anthropic API key).", null));
+        root.addView(step("3", "Play", "Tap a game in the library and press ▶ Launch & play. The floating panel switches to that game. Built-in players: Nonogram.com and Candy Crush Saga. Any other game you add is played by the on-device AI from the instructions you write in its profile (import a model once; it runs on the phone, offline).", null));
 
         Button stop = action("■  STOP everything", Ui.DANGER, v -> {
             CaptureService.stop(this);
@@ -112,13 +112,13 @@ public class MainActivity extends Activity {
         TextView t = text("AI GAME BOT", 28, Color.WHITE);
         t.setTypeface(Ui.BLACK);
         titles.addView(t);
-        TextView v = text("v1.6 · plays the games you launch", 12, 0xCCFFFFFF);
+        TextView v = text("v1.7 · plays the games you launch · offline", 12, 0xCCFFFFFF);
         v.setTypeface(Ui.MONO);
         titles.addView(v);
         top.addView(titles);
         h.addView(top);
 
-        TextView sub = text("Launch a game from your library and let the bot play it. Nonogram.com and Candy Crush have built-in players; any other game can be played by the AI vision agent from your instructions.", 14, 0xE6FFFFFF);
+        TextView sub = text("Launch a game from your library and let the bot play it. Nonogram.com and Candy Crush have built-in players; any other game can be played by the on-device AI from your instructions. Nothing goes over the internet.", 14, 0xE6FFFFFF);
         sub.setPadding(0, dp(14), 0, 0);
         h.addView(sub);
         return h;

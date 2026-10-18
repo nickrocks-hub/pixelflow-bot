@@ -13,13 +13,15 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Plays any app from the owner's written instructions, using a vision-language model.
+ * Plays any app from the owner's written instructions, using a vision-language model that runs
+ * on the phone itself (nothing is sent anywhere).
  *
- * Each step: screenshot (shrunk) + instructions + confirmed calibration + rules learned earlier
- * + the last few steps → the model answers with one JSON object: what screen this is, what
- * changed after the last action, and the next action (tap / long press / swipe / drag / wait /
- * stop) in screenshot pixels. This class turns that into a {@link StateObservation} and a
- * {@link GameAction} in screen pixels, and refuses anything unsafe.
+ * Each step: screenshot (shrunk, with a labelled {@link ScreenGrid} drawn on it) + instructions +
+ * confirmed calibration + rules learned earlier + the last few steps → the model answers with one
+ * JSON object: what screen this is, what changed after the last action, and the next action
+ * (tap / long press / swipe / drag / wait / stop) as grid cells such as "C7" (or board cells
+ * "r3c4" once a board is confirmed, or raw pixels). This class turns that into a
+ * {@link StateObservation} and a {@link GameAction} in screen pixels, and refuses anything unsafe.
  *
  * What it is: planning with a general model, plus "rule learning" as written notes the model
  * keeps about the game (saved in the profile, shown to you, editable). What it is not:
@@ -27,16 +29,18 @@ import java.util.Map;
  */
 public final class InstructionAgent {
     public static final int IMG_W = 540;
+    /** Columns of the labelled grid drawn on screenshots. */
+    public static final int GRID_COLS = 9;
 
     public final GameProfile profile;
     private final VisionModel model;
-    public final Pricing.Model price;
 
-    // Budget and pacing (set from the user's settings).
-    public double maxUsd = 0.50;
-    public int maxCallsPerMinute = 20;
-    public double spentUsd;
+    // Session limits (set from the user's settings): a step cap and pacing, so a session can't run
+    // forever, heat the phone or drain the battery unnoticed.
+    public int maxCalls = 300;
+    public int maxCallsPerMinute = 30;
     public int calls;
+    public long modelMs;
     private final ArrayDeque<Long> recentCalls = new ArrayDeque<>();
 
     /** Session memory: the last steps, fed back to the model. */
@@ -44,22 +48,25 @@ public final class InstructionAgent {
     private final List<String> sessionLog = new ArrayList<>();
     private int step;
 
-    public InstructionAgent(GameProfile profile, VisionModel model, Pricing.Model price) {
+    public InstructionAgent(GameProfile profile, VisionModel model) {
         this.profile = profile;
         this.model = model;
-        this.price = price;
     }
+
+    public String modelName() { return model.name(); }
+
+    public static ScreenGrid gridFor(int imgW, int imgH) { return new ScreenGrid(imgW, imgH, GRID_COLS); }
 
     // ------------------------------------------------------------------ prompts
 
     static final String SYSTEM =
             "You operate a mobile game on an Android phone for the phone's owner, by looking at screenshots. "
-                    + "You can tap, long-press, swipe or drag, or wait. The owner's instructions describe the game and the goal; follow them. "
-                    + "Coordinates are pixels in the screenshot you are given (origin top-left).\n"
-                    + "Safety rules, always: never tap ads, purchase or payment screens, 'buy' buttons, coin/gem/gold shops, offers, "
+                    + "You can tap, long-press, swipe or drag, or wait. Follow the owner's instructions. "
+                    + "Point at places by the grid cell printed on the screenshot, like \"C7\".\n"
+                    + "Safety, always: never tap ads, purchase or payment screens, buy buttons, shops, offers, "
                     + "login or sign-in, permission prompts, rating requests, links that leave the game, or the phone's system bars. "
-                    + "If one of those is showing, answer with action \"stop\" and say what it is. "
-                    + "If you are unsure what to do, prefer \"wait\" or \"stop\" over guessing. "
+                    + "If one of those is showing, use action \"stop\" and say what it is. "
+                    + "If unsure, use \"wait\" or \"stop\" instead of guessing. "
                     + "Reply with exactly one JSON object and nothing else.";
 
     String context() {
@@ -70,6 +77,9 @@ public final class InstructionAgent {
         String cal = profile.settings.get("calibration");
         if (cal != null && !cal.isEmpty() && "yes".equals(profile.settings.get("calibration_confirmed"))) {
             sb.append("Layout confirmed by the owner:\n").append(cal).append('\n');
+            int[] b = board();
+            if (b != null) sb.append("You may also point at a board cell as \"r<row>c<col>\" (from r1c1 at the top-left to r")
+                    .append(b[4]).append('c').append(b[5]).append(").\n");
         }
         String learned = profile.settings.get("learned");
         if (learned != null && !learned.isEmpty()) {
@@ -79,13 +89,13 @@ public final class InstructionAgent {
     }
 
     String calibratePrompt(int w, int h) {
-        return context() + "\nThe screenshot is " + w + "x" + h + " px. Look at it and describe how this game is played on this screen. Reply as JSON:\n"
+        return context() + "\n" + gridFor(w, h).describe() + "\nLook at the screen and describe how this game is played here. Reply as JSON:\n"
                 + "{\"screen\":\"gameplay|menu|level_complete|loss|loading|ad|purchase|login|dialog|other\","
                 + "\"summary\":\"what is on screen\","
                 + "\"objective\":\"the goal, from the instructions and what you see\","
-                + "\"board\":{\"x\":0,\"y\":0,\"w\":0,\"h\":0,\"rows\":0,\"cols\":0} or null,"
-                + "\"controls\":[\"how the player acts, e.g. swipe two adjacent candies to swap them\"],"
-                + "\"hud\":[\"score, moves, lives, timers, goals you can see, with their values\"],"
+                + "\"board\":{\"from\":\"top-left grid cell\",\"to\":\"bottom-right grid cell\",\"rows\":0,\"cols\":0} or null,"
+                + "\"controls\":[\"how the player acts, e.g. swipe two neighbouring pieces to swap them\"],"
+                + "\"hud\":[\"score, moves, lives, timers or goals you can see\"],"
                 + "\"questions\":[\"anything you need the owner to tell you\"],"
                 + "\"confidence\":0.0}";
     }
@@ -96,11 +106,11 @@ public final class InstructionAgent {
             sb.append("\nYour last steps (oldest first):\n");
             for (String s : history) sb.append("- ").append(s).append('\n');
         }
-        sb.append("\nThe screenshot is ").append(w).append('x').append(h).append(" px. Choose the next action. Reply as JSON:\n")
+        sb.append('\n').append(gridFor(w, h).describe()).append(" Choose the next action. Reply as JSON:\n")
                 .append("{\"screen\":\"gameplay|menu|level_complete|loss|loading|ad|purchase|login|dialog|other\",")
                 .append("\"observation\":\"what you see and what changed since your last action\",")
                 .append("\"last_action_effect\":\"worked|no_effect|unclear|none\",")
-                .append("\"action\":{\"type\":\"tap|long_press|swipe|drag|wait|stop\",\"x\":0,\"y\":0,\"x2\":0,\"y2\":0,\"ms\":300},")
+                .append("\"action\":{\"type\":\"tap|long_press|swipe|drag|wait|stop\",\"at\":\"C7\",\"to\":\"cell where a swipe or drag ends\",\"ms\":300},")
                 .append("\"reason\":\"one sentence\",")
                 .append("\"confidence\":0.0}");
         return sb.toString();
@@ -110,12 +120,10 @@ public final class InstructionAgent {
 
     /** Null if a call is allowed now; otherwise why not. */
     public String budgetProblem() {
-        // Expected cost of the next call: the estimate, or the real average so far if that's higher.
-        double est = Math.max(Pricing.stepEstimate(price, IMG_W, IMG_W * 21 / 9), calls == 0 ? 0 : spentUsd / calls);
-        if (spentUsd + est > maxUsd) return "session budget reached (" + Pricing.usd(spentUsd) + " of " + Pricing.usd(maxUsd) + ")";
+        if (calls >= maxCalls) return "step limit for this session reached (" + maxCalls + ")";
         long now = System.currentTimeMillis();
         while (!recentCalls.isEmpty() && now - recentCalls.peekFirst() > 60_000) recentCalls.removeFirst();
-        if (recentCalls.size() >= maxCallsPerMinute) return "rate limit (" + maxCallsPerMinute + " calls/min)";
+        if (recentCalls.size() >= maxCallsPerMinute) return "pace limit (" + maxCallsPerMinute + " steps/min)";
         return null;
     }
 
@@ -125,7 +133,7 @@ public final class InstructionAgent {
         recentCalls.addLast(System.currentTimeMillis());
         VisionModel.Reply r = model.ask(SYSTEM, jpeg, prompt, maxTokens);
         calls++;
-        spentUsd += r.costUsd;
+        modelMs += r.ms;
         return r;
     }
 
@@ -167,10 +175,17 @@ public final class InstructionAgent {
         if (b instanceof Map) {
             Map<String, Object> bm = Json.obj(b);
             float sx = screenW / (float) imgW, sy = screenH / (float) imgH;
-            int x = (int) (Json.num(bm, "x", 0) * sx), y = (int) (Json.num(bm, "y", 0) * sy);
-            int w = (int) (Json.num(bm, "w", 0) * sx), h = (int) (Json.num(bm, "h", 0) * sy);
+            ScreenGrid g = gridFor(imgW, imgH);
+            float[] tl = g.topLeft(Json.str(bm, "from", "")), br = g.bottomRight(Json.str(bm, "to", ""));
+            float x, y, w, h;
+            if (tl != null && br != null && br[0] > tl[0] && br[1] > tl[1]) {
+                x = tl[0]; y = tl[1]; w = br[0] - tl[0]; h = br[1] - tl[1];
+            } else {
+                x = (float) Json.num(bm, "x", 0); y = (float) Json.num(bm, "y", 0);
+                w = (float) Json.num(bm, "w", 0); h = (float) Json.num(bm, "h", 0);
+            }
             int rows = (int) Json.num(bm, "rows", 0), cols = (int) Json.num(bm, "cols", 0);
-            if (w > 0 && h > 0) c.board = new int[]{x, y, w, h, rows, cols};
+            if (w > 0 && h > 0) c.board = new int[]{(int) (x * sx), (int) (y * sy), (int) (w * sx), (int) (h * sy), rows, cols};
         }
         return c;
     }
@@ -239,13 +254,14 @@ public final class InstructionAgent {
         if (type.equals("stop")) { d.stop = true; d.problem = "model chose to stop: " + d.reason; return d; }
         if (type.equals("wait")) { d.wait = true; return d; }
         float sx = screenW / (float) imgW, sy = screenH / (float) imgH;
-        float x = (float) Json.num(a, "x", -1), y = (float) Json.num(a, "y", -1);
-        float x2 = (float) Json.num(a, "x2", -1), y2 = (float) Json.num(a, "y2", -1);
+        float[] p1 = point(a, "at", "x", "y", imgW, imgH, screenW, screenH);
+        float[] p2 = point(a, "to", "x2", "y2", imgW, imgH, screenW, screenH);
+        float x = p1[0], y = p1[1], x2 = p2[0], y2 = p2[1];
         long ms = (long) clamp(Json.num(a, "ms", 300), 10, 3000);
         String bad = pointProblem(x, y, imgW, imgH);
         boolean twoPoint = type.equals("swipe") || type.equals("drag");
         if (bad == null && twoPoint) bad = pointProblem(x2, y2, imgW, imgH);
-        if (bad != null) { d.stop = true; d.problem = "model asked for an unsafe point: " + bad; return d; }
+        if (bad != null) { d.stop = true; d.problem = "model asked for an unusable point: " + bad; return d; }
         String label = d.reason.length() > 80 ? d.reason.substring(0, 80) : d.reason;
         switch (type) {
             case "tap": d.action = GameAction.tap(x * sx, y * sy, label); break;
@@ -258,9 +274,45 @@ public final class InstructionAgent {
         return d;
     }
 
+    /** The confirmed board as {x, y, w, h, rows, cols} in screen pixels, or null. */
+    int[] board() {
+        if (!"yes".equals(profile.settings.get("calibration_confirmed"))) return null;
+        String s = profile.settings.get("board");
+        if (s == null || s.isEmpty()) return null;
+        try {
+            String[] p = s.split(",");
+            int[] b = new int[6];
+            for (int i = 0; i < 6; i++) b[i] = Integer.parseInt(p[i].trim());
+            return b[2] > 0 && b[3] > 0 && b[4] > 0 && b[5] > 0 ? b : null;
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
+     * A point named by the model, in screenshot pixels: a grid cell ("C7"), a board cell ("r3c4",
+     * confirmed board only), or raw "x"/"y" numbers. {-1,-1} if nothing usable.
+     */
+    float[] point(Map<String, Object> a, String cellKey, String xKey, String yKey, int imgW, int imgH, int screenW, int screenH) {
+        String cell = Json.str(a, cellKey, "").trim();
+        if (!cell.isEmpty()) {
+            java.util.regex.Matcher bm = java.util.regex.Pattern.compile("(?i)^r\\s*(\\d+)\\s*,?\\s*c\\s*(\\d+)$").matcher(cell);
+            int[] b = board();
+            if (bm.matches() && b != null) {
+                int r = Integer.parseInt(bm.group(1)) - 1, c = Integer.parseInt(bm.group(2)) - 1;
+                if (r < 0 || c < 0 || r >= b[4] || c >= b[5]) return new float[]{-1, -1};
+                float sx = screenW / (float) imgW, sy = screenH / (float) imgH;
+                return new float[]{(b[0] + (c + 0.5f) * b[2] / b[5]) / sx, (b[1] + (r + 0.5f) * b[3] / b[4]) / sy};
+            }
+            float[] p = gridFor(imgW, imgH).center(cell);
+            return p != null ? p : new float[]{-1, -1};
+        }
+        return new float[]{(float) Json.num(a, xKey, -1), (float) Json.num(a, yKey, -1)};
+    }
+
     /** Points must be on the screenshot and away from the status bar (top 3%) and navigation bar (bottom 4%). */
     static String pointProblem(float x, float y, int w, int h) {
-        if (x < 0 || y < 0 || x >= w || y >= h) return String.format(Locale.US, "(%.0f, %.0f) is off the screenshot", x, y);
+        if (x < 0 || y < 0 || x >= w || y >= h) return String.format(Locale.US, "(%.0f, %.0f) is off the screenshot or not a cell", x, y);
         if (y < h * 0.03f) return "it is on the status bar";
         if (y > h * 0.96f) return "it is on the navigation bar";
         return null;
@@ -315,6 +367,8 @@ public final class InstructionAgent {
 
     /** For tests: the prompt the next decision would send. */
     public String decidePromptForTest() { return decidePrompt(IMG_W, 1260); }
+
+    public String calibratePromptForTest() { return calibratePrompt(IMG_W, 1260); }
 
     // ------------------------------------------------------------------ helpers
 

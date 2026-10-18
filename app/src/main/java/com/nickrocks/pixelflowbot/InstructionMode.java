@@ -1,6 +1,8 @@
 package com.nickrocks.pixelflowbot;
 
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.os.Handler;
 import android.os.Looper;
@@ -18,18 +20,19 @@ import com.nickrocks.pixelflowbot.core.GameProfile;
 import com.nickrocks.pixelflowbot.core.RewardModel;
 import com.nickrocks.pixelflowbot.core.SessionGuard;
 import com.nickrocks.pixelflowbot.core.StateObservation;
-import com.nickrocks.pixelflowbot.core.vlm.ClaudeVision;
 import com.nickrocks.pixelflowbot.core.vlm.InstructionAgent;
-import com.nickrocks.pixelflowbot.core.vlm.Pricing;
+import com.nickrocks.pixelflowbot.core.vlm.ScreenGrid;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Floating-panel player for games without a built-in player: the AI vision agent following the
- * owner's instructions. Loop: screenshot → model decides → safety guard → gesture → wait → repeat.
+ * Floating-panel player for games without a built-in player: the on-device AI agent following the
+ * owner's instructions. Loop: screenshot (+ labelled grid) → on-device model decides → safety guard
+ * → gesture → wait → repeat. Nothing leaves the phone.
  * Every step is stored as experience; every 25 steps and at the end, what it learned about the
  * game is written to the profile as rules (hypotheses you can see and edit in the app).
  */
@@ -50,7 +53,7 @@ final class InstructionMode {
 
     private int state = IDLE;
     private GameProfile profile;
-    private InstructionAgent agent;
+    private volatile InstructionAgent agent;
     private EpisodeRecorder rec;
     private GameAction pending;
     private long pendingStart, pendingLatency;
@@ -99,18 +102,18 @@ final class InstructionMode {
         if (busy()) return;
         profile = p;
         agent = null;
-        CloudSettings cs = new CloudSettings(svc);
+        LocalSettings ls = new LocalSettings(svc);
         if (p == null) { note(""); return; }
-        if (!cs.ready()) {
-            note(p.name + ": no built-in player. The AI vision agent can play it from your instructions — set it up in "
-                    + "AI GAME BOT → AI vision agent (your Anthropic API key, opt-in).");
+        if (!ls.ready()) {
+            note(p.name + ": no built-in player. The on-device AI can play it from your instructions — import a model in "
+                    + "AI GAME BOT → On-device AI first.");
         } else {
             String instr = p.settings.get("objective");
             boolean cal = "yes".equals(p.settings.get("calibration_confirmed"));
-            note(p.name + " · AI vision agent (" + cs.model().id + ", budget " + Pricing.usd(cs.maxUsd()) + ")\n"
+            note(p.name + " · on-device AI (" + ls.modelName() + ", up to " + ls.maxSteps() + " steps)\n"
                     + (instr == null || instr.trim().isEmpty() ? "⚠ No instructions yet — add them in the game's profile.\n" : "")
                     + (cal ? "Calibration confirmed." : "Press 🔍 Calibrate on a game screen first, then confirm it in the app.")
-                    + "\n▶ Start sends a screenshot per step to Anthropic.");
+                    + "\nRuns on this phone — nothing is sent anywhere.");
         }
         refresh();
     }
@@ -124,21 +127,29 @@ final class InstructionMode {
     }
 
     private boolean prepare() {
-        CloudSettings cs = new CloudSettings(svc);
+        LocalSettings ls = new LocalSettings(svc);
         if (profile == null) { svc.toast("Open a game from your library first."); return false; }
-        if (!cs.ready()) { note("Set up the AI vision agent in the app first (consent + API key)."); return false; }
+        if (!ls.ready()) { note("Import a model in AI GAME BOT → On-device AI first."); return false; }
         if (!CaptureService.isRunning()) { note("Screen capture is off — start it in the app (Launch & play does it for you)."); return false; }
         String fg = svc.foregroundPackage();
         if (profile.packageName != null && fg != null && !fg.equals("?") && !fg.equals(profile.packageName) && !fg.equals(svc.getPackageName())) {
             note(profile.name + " isn't in front (" + fg + ")."); return false;
         }
-        if (agent == null) {
-            profile = AgentPlatform.get(svc).profile(profile.id);
-            agent = new InstructionAgent(profile, new ClaudeVision(cs.apiKey(), cs.model()), cs.model());
-            agent.maxUsd = cs.maxUsd();
-            agent.maxCallsPerMinute = cs.perMinute();
-        }
         return true;
+    }
+
+    /** The agent with the model loaded. Runs on the worker thread (the first load takes a while). */
+    private InstructionAgent agentNow() throws IOException {
+        InstructionAgent a = agent;
+        if (a != null) return a;
+        LocalSettings ls = new LocalSettings(svc);
+        if (!LocalVision.isLoaded(ls.modelPath())) handler.post(() -> note("Loading the on-device model (10–60 s the first time)…"));
+        LocalVision m = LocalVision.get(svc, ls.modelPath(), ls.modelName(), ls.preferGpu());
+        GameProfile p = AgentPlatform.get(svc).profile(profile.id);
+        a = new InstructionAgent(p, m);
+        a.maxCalls = ls.maxSteps();
+        agent = a;
+        return a;
     }
 
     // ------------------------------------------------------------------ calibration
@@ -150,10 +161,15 @@ final class InstructionMode {
         note("Looking at the screen…");
         shot((jpeg, w, h, sw, sh) -> worker.execute(() -> {
             try {
-                InstructionAgent.Calibration c = agent.calibrate(jpeg, w, h, sw, sh);
-                final double cost = agent.spentUsd;
-                new CloudSettings(svc).addSpent(cost);
+                InstructionAgent.Calibration c = agentNow().calibrate(jpeg, w, h, sw, sh);
+                final long ms = agent.modelMs;
                 GameProfile p = AgentPlatform.get(svc).profile(profile.id);
+                if (c.board != null) {
+                    int[] bd = c.board;
+                    p.settings.put("board", bd[0] + "," + bd[1] + "," + bd[2] + "," + bd[3] + "," + bd[4] + "," + bd[5]);
+                } else {
+                    p.settings.remove("board");
+                }
                 p.settings.put("calibration", c.text());
                 p.settings.put("calibration_confirmed", "no");
                 p.settings.put("calibration_questions", String.join("\n", c.questions));
@@ -164,7 +180,7 @@ final class InstructionMode {
                 handler.post(() -> {
                     state = IDLE;
                     refresh();
-                    note("Calibration (confidence " + String.format(Locale.US, "%.2f", c.confidence) + ", cost " + Pricing.usd(cost) + "):\n"
+                    note("Calibration (confidence " + String.format(Locale.US, "%.2f", c.confidence) + ", " + String.format(Locale.US, "%.0f s", ms / 1000.0) + " on this phone):\n"
                             + c.text() + q + "\nOpen the game's profile in AI GAME BOT to confirm or correct it.");
                 });
             } catch (Exception e) {
@@ -184,7 +200,7 @@ final class InstructionMode {
                         String eff = after == null ? "none" : after.value("effect of last action (model)", "none");
                         return new RewardModel.Reward(InstructionAgent.rewardOf(eff), "vision model's own report: " + eff + " (unverified)", false, false);
                     });
-            rec.begin(null, "instructions agent, " + agent.price.id);
+            rec.begin(null, "on-device instructions agent, " + new LocalSettings(svc).modelName());
             noEffect = 0;
         }
         state = PLAYING;
@@ -195,12 +211,12 @@ final class InstructionMode {
 
     private void loop() {
         if (state != PLAYING || dead) return;
-        String b = agent.budgetProblem();
+        String b = agent == null ? null : agent.budgetProblem();
         if (b != null) { pause(b); return; }
         shot((jpeg, w, h, sw, sh) -> worker.execute(() -> {
             InstructionAgent.Decision d;
             try {
-                d = agent.decide(jpeg, w, h, sw, sh);
+                d = agentNow().decide(jpeg, w, h, sw, sh);
             } catch (Exception e) {
                 handler.post(() -> pause("model call failed: " + e.getMessage()));
                 return;
@@ -212,13 +228,13 @@ final class InstructionMode {
 
     private void act(InstructionAgent.Decision d) {
         if (state != PLAYING) return;
-        new CloudSettings(svc).addSpent(d.reply == null ? 0 : d.reply.costUsd);
         // The reward for the previous action is the model's report on what it did.
         if (pending != null && rec != null) rec.step(pending, pendingStart, pendingLatency, d.obs);
         pending = null;
         if ("no_effect".equals(d.effect)) noEffect++; else if ("worked".equals(d.effect)) noEffect = 0;
-        String status = String.format(Locale.US, "step %d · %s · conf %.2f · spent %s of %s\nSees: %s",
-                agent.steps(), d.obs.screen.name().toLowerCase(Locale.US), d.confidence, Pricing.usd(agent.spentUsd), Pricing.usd(agent.maxUsd), d.observation);
+        String status = String.format(Locale.US, "step %d of max %d · %s · conf %.2f · %.1f s to think\nSees: %s",
+                agent.steps(), agent.maxCalls, d.obs.screen.name().toLowerCase(Locale.US), d.confidence,
+                d.reply == null ? 0 : d.reply.ms / 1000.0, d.observation);
         if (d.stop) { pause(d.problem != null ? d.problem : "the model stopped"); return; }
         if (d.wait || d.obs.screen == StateObservation.Screen.TRANSITION) {
             if (++waits > 6) { pause("waited 6 times — nothing to do?"); return; }
@@ -245,7 +261,7 @@ final class InstructionMode {
             pendingStart = t0;
             pendingLatency = latency;
             if (agent.steps() % 25 == 0) learn(false);
-            handler.postDelayed(this::loop, new CloudSettings(svc).settleMs());
+            handler.postDelayed(this::loop, new LocalSettings(svc).settleMs());
         }));
     }
 
@@ -254,7 +270,7 @@ final class InstructionMode {
         state = PAUSED;
         svc.setCompact(false);
         refresh();
-        note("Paused: " + why + (agent != null ? "\n" + agent.steps() + " steps · spent " + Pricing.usd(agent.spentUsd) : ""));
+        note("Paused: " + why + (agent != null ? "\n" + agent.steps() + " steps" : ""));
         if (rec != null) rec.end("paused: " + why, null);
         rec = null;
         learn(true);   // Resume starts a fresh episode
@@ -299,7 +315,7 @@ final class InstructionMode {
 
     private interface Shot { void got(byte[] jpeg, int w, int h, int screenW, int screenH); }
 
-    /** A fresh frame with the panel hidden, shrunk to IMG_W wide and JPEG-encoded. */
+    /** A fresh frame with the panel hidden, shrunk to IMG_W wide, labelled grid drawn on, JPEG-encoded. */
     private void shot(Shot cb) {
         final View panel = svc.panelView();
         if (panel != null) panel.setVisibility(View.INVISIBLE);
@@ -311,7 +327,8 @@ final class InstructionMode {
                 try {
                     Bitmap full = Bitmap.createBitmap(frame.px, frame.w, frame.h, Bitmap.Config.ARGB_8888);
                     h = Math.round(frame.h * (w / (float) frame.w));
-                    Bitmap small = Bitmap.createScaledBitmap(full, w, h, true);
+                    Bitmap small = Bitmap.createScaledBitmap(full, w, h, true).copy(Bitmap.Config.ARGB_8888, true);
+                    drawGrid(small, InstructionAgent.gridFor(w, h));
                     ByteArrayOutputStream bo = new ByteArrayOutputStream();
                     small.compress(Bitmap.CompressFormat.JPEG, 80, bo);
                     full.recycle();
@@ -341,6 +358,35 @@ final class InstructionMode {
             pause("no new frame from the screen capture (is it still on?)");
             refresh();
         }, 3000);
+    }
+
+    /** Thin lines and a small name ("C7") in each cell's top-left corner, readable on any background. */
+    static void drawGrid(Bitmap b, ScreenGrid g) {
+        Canvas c = new Canvas(b);
+        Paint dark = new Paint();
+        dark.setColor(0x66000000);
+        dark.setStrokeWidth(3);
+        Paint light = new Paint();
+        light.setColor(0xAAFFFFFF);
+        light.setStrokeWidth(1);
+        for (int i = 1; i < g.cols; i++) { float x = i * g.cellW; c.drawLine(x, 0, x, g.imgH, dark); c.drawLine(x, 0, x, g.imgH, light); }
+        for (int j = 1; j < g.rows; j++) { float y = j * g.cellH; c.drawLine(0, y, g.imgW, y, dark); c.drawLine(0, y, g.imgW, y, light); }
+        Paint txt = new Paint(Paint.ANTI_ALIAS_FLAG);
+        txt.setColor(0xFFFFFF00);
+        txt.setTextSize(Math.max(10, g.cellH * 0.24f));
+        txt.setFakeBoldText(true);
+        Paint box = new Paint();
+        box.setColor(0xB0000000);
+        Paint.FontMetrics fm = txt.getFontMetrics();
+        float th = fm.descent - fm.ascent;
+        for (int j = 0; j < g.rows; j++) {
+            for (int i = 0; i < g.cols; i++) {
+                String s = g.label(j, i);
+                float x = i * g.cellW + 2, y = j * g.cellH + 2;
+                c.drawRect(x, y, x + txt.measureText(s) + 4, y + th, box);
+                c.drawText(s, x + 2, y - fm.ascent, txt);
+            }
+        }
     }
 
     /** Flip a tiny invisible overlay so the screen recorder produces a new frame. */

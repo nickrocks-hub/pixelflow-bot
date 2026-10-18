@@ -83,10 +83,10 @@ public class ProfileActivity extends Activity {
         // ---- Status
         root.addView(section("STATUS"));
         LinearLayout st = card();
-        CloudSettings cs = new CloudSettings(this);
+        LocalSettings cs = new LocalSettings(this);
         boolean calibrated = "yes".equals(p.settings.get("calibration_confirmed"));
         TextView chip = text(p.support == GameProfile.Support.SUPPORTED ? "● Built-in player"
-                        : !cs.ready() ? "● AI vision agent — needs setup" : calibrated ? "● AI vision agent — calibrated" : "● AI vision agent — needs calibration",
+                        : !cs.ready() ? "● On-device AI — needs a model" : calibrated ? "● On-device AI — calibrated" : "● On-device AI — needs calibration",
                 14, p.support == GameProfile.Support.SUPPORTED || (cs.ready() && calibrated) ? 0xFF5EEAD4 : 0xFFFCD34D);
         chip.setTypeface(Ui.MEDIUM);
         st.addView(chip);
@@ -95,12 +95,12 @@ public class ProfileActivity extends Activity {
             st.addView(body("Works: " + ad.works));
             st.addView(body("Limits: " + ad.limits));
         } else {
-            st.addView(body("No built-in player, so this game is played by the AI vision agent: it looks at the screen, reads your "
+            st.addView(body("No built-in player, so this game is played by the on-device AI: it looks at the screen, reads your "
                     + "instructions below, works out the board and controls (🔍 Calibrate), then plays step by step and keeps notes on what it learns."));
-            st.addView(body("It uses Anthropic's Claude API with your own key — opt-in, with a budget per session. Each step takes a few seconds, "
+            st.addView(body("The model runs on this phone; nothing goes over the internet. Each step takes several seconds or more, "
                     + "so it suits puzzles, turn-based games and menus, not reflex games. It never taps ads, purchases or sign-ins."));
-            st.addView(small(cs.ready() ? "AI vision agent settings (" + cs.model().id + ")" : "Set up the AI vision agent", cs.ready() ? Ui.MUTED : Ui.INFO,
-                    v -> startActivity(new Intent(this, AiSettingsActivity.class))));
+            st.addView(small(cs.ready() ? "On-device AI settings (" + cs.modelName() + ")" : "Import an on-device model", cs.ready() ? Ui.MUTED : Ui.INFO,
+                    v -> startActivity(new Intent(this, ModelActivity.class))));
         }
         root.addView(st);
         if (p.packageName != null) {
@@ -108,10 +108,10 @@ public class ProfileActivity extends Activity {
             root.addView(action(playable ? "▶  Launch & play" : "Open " + p.name, playable ? Ui.ACCENT : Ui.INFO, v -> launch(p, playable)));
             root.addView(note(ad != null ? howTo(p.adapterId) : cs.ready()
                     ? "On a game screen press 🔍 Calibrate on the floating panel, confirm the result below, then ▶ Start."
-                    : "Set up the AI vision agent first; until then the panel can only save screenshots."));
+                    : "Import an on-device model first; until then the panel can only save screenshots."));
         }
 
-        // ---- Instructions (the owner's words; the AI vision agent follows them)
+        // ---- Instructions (the owner's words; the on-device AI follows them)
         root.addView(section("YOUR INSTRUCTIONS FOR THE AI"));
         LinearLayout ob = card();
         String objective = p.settings.get("objective");
@@ -125,7 +125,7 @@ public class ProfileActivity extends Activity {
         ob.addView(row);
         root.addView(ob);
 
-        // ---- Calibration and learned rules (AI vision agent)
+        // ---- Calibration and learned rules (on-device AI)
         if (ad == null) {
             root.addView(section("CALIBRATION (FROM THE SCREEN)"));
             LinearLayout cc = card();
@@ -143,7 +143,7 @@ public class ProfileActivity extends Activity {
                 if (!calibrated) cr.addView(small("✓ Confirm", Ui.ACCENT, v -> { p.settings.put("calibration_confirmed", "yes"); save(p); }), weight());
                 cr.addView(small("Edit", Ui.MUTED, v -> editSetting(p, "calibration", "Correct the calibration", true)), weight());
                 cr.addView(small("Clear", Ui.DANGER, v -> { p.settings.remove("calibration"); p.settings.remove("calibration_confirmed");
-                    p.settings.remove("calibration_questions"); save(p); }), weight());
+                    p.settings.remove("calibration_questions"); p.settings.remove("board"); save(p); }), weight());
                 cc.addView(cr);
             }
             root.addView(cc);
