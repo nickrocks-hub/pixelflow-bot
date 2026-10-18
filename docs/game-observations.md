@@ -65,6 +65,13 @@ Characters: same colors incl. black (Level 25). Shot counts seen: 1 to 50.
 - Board is taller: rows from y 385 to 1350. The panel frame itself is identical on L24-26 (inner edges x 93-987, y 387-1398).
 - Fixed in v0.5: queue row scanned across the full width; "?" recognised; DARK_GREEN colour; reading area = whole panel inside, minus rounded corners; stray shine on white characters ignored.
 
+## Game 3 (v0.5, Level 26, WON) - logs/pfbot_20261018_081719_v05_L26_win.txt
+- 66 moves, about 160 s, ended on the win popup with the board cleared.
+- Problem: slot characters read as "K0"/"W0" (impossible: a digit was missed). The bot re-sent slot 2 about 15 times; black and white cube counts didn't change during that time.
+- Problem: shaded bright-green bottom row read as dark green (s 0.86-0.88, v 0.73-0.82; true dark green s 0.99, v 0.55-0.64).
+- Fixed in v0.6: 0-shot readings occupy a slot but are never tapped; slot characters that cleared nothing aren't re-sent until their colour's cubes drop; dark green needs s > 0.93 and v < 0.75.
+- Win rate so far: v0.4 1/1 (L25), v0.5 1/1 (L26). Total auto-play: 2 wins, 1 loss (v0.3).
+
 ## Board reader status (Python prototype)
 - tools/board_reader.py: calibrates grid once per level from the full board (frequency fit of cube spacing), then reads every cube color.
 - Tested on Level 24 start, Level 24 mid-level (with cleared cubes) and Level 25 start: redrawn boards match the screenshots.

@@ -271,7 +271,7 @@ public class TapService extends AccessibilityService {
         planner.reset();
         rec = new Recorder(this);
         rec.line("{\"t\":" + System.currentTimeMillis() + ",\"event\":\"start\",\"app\":" + Recorder.q(gamePkg)
-                + ",\"version\":\"0.5\",\"planner\":\"exposed-edge-v2\"}");
+                + ",\"version\":\"0.6\",\"planner\":\"exposed-edge-v2\"}");
         autoLine = "Starting… logging to " + rec.where();
         updateButtons();
         handler.postDelayed(this::autoStep, 300);

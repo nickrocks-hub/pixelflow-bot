@@ -51,11 +51,17 @@ public final class Planner {
     private final float[] inFlight = new float[N];
     private int[] prevRemaining;
     private CharReader.Character[] prevSlots;
+    /** Slot characters sent without effect: code -> cubes of that colour left when sent. */
+    private final java.util.Map<String, Integer> noEffect = new java.util.HashMap<>();
 
-    public void reset() { Arrays.fill(inFlight, 0); prevRemaining = null; prevSlots = null; }
+    public void reset() { Arrays.fill(inFlight, 0); prevRemaining = null; prevSlots = null; noEffect.clear(); }
 
     /** Call after actually tapping a move. */
-    public void committed(Move m) { inFlight[m.ch.color.ordinal()] += m.ch.shots; }
+    public void committed(Move m) {
+        int c = m.ch.color.ordinal();
+        inFlight[c] += m.ch.shots;
+        if (m.fromSlot && prevRemaining != null) noEffect.put(m.ch.code(), prevRemaining[c]);
+    }
 
     public String inFlightText() {
         StringBuilder sb = new StringBuilder();
@@ -129,6 +135,12 @@ public final class Planner {
             for (int i = 0; i < list.length; i++) {
                 CharReader.Character c = list[i];
                 if (c == null || c.hidden) continue;
+                // Sent from a slot before and nothing of its colour was cleared since: don't loop on it.
+                Integer before = slots ? noEffect.get(c.code()) : null;
+                if (before != null) {
+                    if (rem[c.color.ordinal()] < before) noEffect.remove(c.code());
+                    else continue;
+                }
                 float avail = exp[c.color.ordinal()] - inFlight[c.color.ordinal()];
                 if (avail <= 0) continue;
                 boolean clean = c.shots <= avail;

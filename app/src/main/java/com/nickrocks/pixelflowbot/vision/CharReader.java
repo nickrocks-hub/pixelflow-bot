@@ -76,8 +76,13 @@ public final class CharReader {
         GameColor col = GameColor.classify(m[0], m[1], m[2]);
         if (col == GameColor.EMPTY) return null;
         // Stray shapes (e.g. the shine on white characters) are ignored when real digits are present.
-        if (num.length() >= 1 && num.length() <= 2)
-            return new Character(col, Integer.parseInt(num), false, lx);
+        if (num.length() >= 1 && num.length() <= 2) {
+            int n = Integer.parseInt(num);
+            // A real character never shows 0: a digit was missed. Keep it (it occupies a slot)
+            // but mark it unreadable so it is never tapped on a wrong guess.
+            if (n == 0) return new Character(col, 0, true, lx);
+            return new Character(col, n, false, lx);
+        }
         if (num.length() == 0 && unknown) return new Character(col, 0, true, lx);   // "?"
         return null;
     }
