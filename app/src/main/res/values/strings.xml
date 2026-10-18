@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PixelFlow Bot</string>
+    <string name="accessibility_label">PixelFlow Bot taps</string>
+    <string name="accessibility_description">Lets PixelFlow Bot perform taps on the screen when you press its Test tap button. It does nothing on its own in this version.</string>
+</resources>
