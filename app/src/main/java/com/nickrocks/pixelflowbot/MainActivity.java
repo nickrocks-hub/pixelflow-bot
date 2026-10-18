@@ -35,13 +35,13 @@ public class MainActivity extends Activity {
         TextView intro = new TextView(this);
         intro.setTextSize(15);
         intro.setText("Setup:\n"
-                + "1. Turn on the tap service (Accessibility). A floating panel appears.\n"
+                + "1. Turn on the tap service (Accessibility). A floating panel appears at the top.\n"
                 + "2. Start screen capture and allow it (choose \"Entire screen\").\n"
-                + "3. Open Pixel Flow and use the panel at the bottom:\n"
-                + "   Read = show what the bot sees once. Live = read every second.\n"
-                + "   For best results start Read/Live at the start of a level.\n"
-                + "   Recalibrate = re-measure the board. Test tap, Save frame.\n\n"
-                + "STOP ends capture, cancels taps and turns the tap service off.");
+                + "3. Open Pixel Flow at the START of a level and press \u25B6 Start on the panel.\n\n"
+                + "The bot taps only characters, only while Pixel Flow is in front, and stops at the\n"
+                + "win/fail screen or any popup. It never taps ads, coins or purchases.\n"
+                + "\u23F8 Pause = hold. \u25A0 STOP = end everything.\n"
+                + "Logs: Download/PixelFlowBot on this phone.");
         root.addView(intro);
 
         statusView = new TextView(this);
