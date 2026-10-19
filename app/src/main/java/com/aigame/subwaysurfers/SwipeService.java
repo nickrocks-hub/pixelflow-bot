@@ -14,6 +14,8 @@ import android.os.Looper;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.MotionEvent;
+import android.view.View;
 import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 import android.widget.LinearLayout;
@@ -43,6 +45,7 @@ public class SwipeService extends AccessibilityService {
     private WindowManager wm;
     private LinearLayout panel;
     private TextView statusView, toggleView;
+    private WindowManager.LayoutParams panelLp;
 
     @Override
     protected void onServiceConnected() {
@@ -154,6 +157,14 @@ public class SwipeService extends AccessibilityService {
         panel.setBackground(bg);
         panel.setPadding(dp(10), dp(6), dp(6), dp(6));
 
+        // drag handle: hold and move to put the panel anywhere
+        TextView grip = new TextView(this);
+        grip.setText("⠿");
+        grip.setTextColor(0xFF8A90A6);
+        grip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
+        grip.setPadding(0, 0, dp(8), 0);
+        panel.addView(grip);
+
         statusView = new TextView(this);
         statusView.setTextColor(0xFFB8BCC8);
         statusView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
@@ -180,10 +191,37 @@ public class SwipeService extends AccessibilityService {
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                         | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
                 PixelFormat.TRANSLUCENT);
-        // Upper-left area below the pause button: the bot ignores the top of the screen.
+        // Default: upper-left, below the pause button. Drag it anywhere; the spot is remembered.
         p.gravity = Gravity.TOP | Gravity.START;
-        p.x = dp(8);
-        p.y = dp(110);
+        p.x = BotState.prefs(this).getInt(BotState.K_PANEL_X, dp(8));
+        p.y = BotState.prefs(this).getInt(BotState.K_PANEL_Y, dp(110));
+        panelLp = p;
+        View.OnTouchListener drag = new View.OnTouchListener() {
+            float sx, sy; int ox, oy; boolean moved;
+            @Override public boolean onTouch(View v, MotionEvent e) {
+                switch (e.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        sx = e.getRawX(); sy = e.getRawY(); ox = panelLp.x; oy = panelLp.y; moved = false;
+                        return true;
+                    case MotionEvent.ACTION_MOVE:
+                        int nx = ox + Math.round(e.getRawX() - sx), ny = oy + Math.round(e.getRawY() - sy);
+                        if (Math.abs(nx - ox) + Math.abs(ny - oy) > dp(4)) moved = true;
+                        int[] sz = screenSize();
+                        panelLp.x = Math.max(0, Math.min(sz[0] - panel.getWidth(), nx));
+                        panelLp.y = Math.max(0, Math.min(sz[1] - panel.getHeight(), ny));
+                        try { wm.updateViewLayout(panel, panelLp); } catch (RuntimeException ignored) { }
+                        return true;
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        if (moved) BotState.prefs(SwipeService.this).edit()
+                                .putInt(BotState.K_PANEL_X, panelLp.x).putInt(BotState.K_PANEL_Y, panelLp.y).apply();
+                        return true;
+                }
+                return false;
+            }
+        };
+        grip.setOnTouchListener(drag);
+        statusView.setOnTouchListener(drag);
         try {
             wm.addView(panel, p);
         } catch (RuntimeException e) {
@@ -225,6 +263,11 @@ public class SwipeService extends AccessibilityService {
             toggleView.setBackground(b);
             if (!on && statusView != null) statusView.setText(BotState.captureActive ? "Paused" : "AI GAME SUBWAY SURFERS");
         });
+    }
+
+    /** Thread-safe short message on the panel, shown even while paused. */
+    public void flash(String s) {
+        main.post(() -> { if (statusView != null) statusView.setText(s); });
     }
 
     /** Thread-safe status line. */

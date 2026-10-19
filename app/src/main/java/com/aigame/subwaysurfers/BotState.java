@@ -22,7 +22,13 @@ public final class BotState {
     public static volatile String foregroundPackage = "";
 
     // preference keys
-    public static final String K_REACT = "react_ms";
+    // v1.1: new key so phones that saved the old 420 ms default start from the new, earlier default
+    public static final String K_REACT = "react_ms_v2";
+    public static final String K_LATENCY = "latency_ms";
+    public static final String K_COINS = "seek_coins";
+    public static final String K_LOGS = "save_logs";
+    public static final String K_PANEL_X = "panel_x";
+    public static final String K_PANEL_Y = "panel_y";
     public static final String K_SAFE = "safe_extra_ms";
     public static final String K_LANE_CD = "lane_cooldown_ms";
     public static final String K_JUMP_LOW = "jump_low";
@@ -36,7 +42,9 @@ public final class BotState {
 
     /** Copies the saved settings into the brain's parameters. */
     public static void applyTo(SharedPreferences p, SurferBrain.Params out) {
-        out.reactMs = p.getInt(K_REACT, 420);
+        out.reactMs = p.getInt(K_REACT, 650);
+        out.latencyMs = p.getInt(K_LATENCY, 120);
+        out.seekCoins = p.getBoolean(K_COINS, true);
         out.safeExtraMs = p.getInt(K_SAFE, 350);
         out.laneCooldownMs = p.getInt(K_LANE_CD, 230);
         out.jumpLowObstacles = p.getBoolean(K_JUMP_LOW, true);

@@ -14,8 +14,16 @@ public final class SurferBrain {
     public enum Move { NONE, LEFT, RIGHT, JUMP, ROLL }
 
     public static final class Params {
-        /** Act when an obstacle in the runner's lane is closer than this many seconds. */
-        public int reactMs = 420;
+        /** Act when an obstacle in the runner's lane is closer than this many ms. */
+        public int reactMs = 650;
+        /** Phone delay (screen capture + swipe) added on top of the reaction time. */
+        public int latencyMs = 120;
+        /** Steer towards lanes with coins and power-ups when it's safe. */
+        public boolean seekCoins = true;
+        /** A lane needs this much more coin "value" than ours (x) before we move for it. */
+        public double coinRatio = 1.6;
+        /** Ignore coin value below this (a stray sparkle). */
+        public double coinMin = 80;
         /** A neighbouring lane must stay clear at least this much longer to be worth moving into. */
         public int safeExtraMs = 350;
         /** Wait after a lane change before the next one (the move animation). */
@@ -45,12 +53,13 @@ public final class SurferBrain {
     private int laneVotes;
     private int pendingLaneMove;    // expected change from our own swipe
     private long pendingUntil;
-    private long nextLaneOk, nextAirOk;
+    private long nextLaneOk, nextAirOk, nextCoinOk;
 
     // last-frame info for the overlay / replay tool
     public String status = "";
     public TrackVision.Result last;
     public final double[] laneTti = new double[3];
+    public final double[] laneReward = new double[3];
     /** Per lane: depth last frame and how many frames in a row it has been approaching. */
     private final double[] prevD = {Double.NaN, Double.NaN, Double.NaN};
     private final int[] approach = new int[3];
@@ -64,7 +73,8 @@ public final class SurferBrain {
     public void reset() {
         speed = p.startSpeed;
         lane = 0; laneVotes = 0; pendingLaneMove = 0;
-        nextLaneOk = nextAirOk = 0;
+        nextLaneOk = nextAirOk = nextCoinOk = 0;
+        for (int k = 0; k < 3; k++) laneReward[k] = 0;
         noTrackFrames = 0; prevFrameMs = 0;
         for (int k = 0; k < 3; k++) { prevD[k] = Double.NaN; approach[k] = 0; }
         vpX = vpY = Double.NaN;
@@ -144,20 +154,25 @@ public final class SurferBrain {
         // (or already too late). Either way, don't swipe.
         boolean onRoof = ownT.blockedAtStart;
 
+        // coin value per lane, smoothed a little (coins flicker as they spin)
+        for (int k = 0; k < 3; k++) laneReward[k] += 0.5 * (r.reward[k] - laneReward[k]);
+
         double threat = laneTti[own];
+        double react = p.reactMs + p.latencyMs;
         Move m = Move.NONE;
         String why;
         if (onRoof) {
             why = "on a train roof";
-        } else if (threat < p.reactMs && laneConfirmed[own]) {
-            // try a neighbouring lane
-            int bestDir = 0; double bestTti = threat + p.safeExtraMs;
+        } else if (threat < react && laneConfirmed[own]) {
+            // try a neighbouring lane; among safe ones prefer the one with more coins
+            int bestDir = 0; double bestScore = -1;
             for (int dir = -1; dir <= 1; dir += 2) {
                 int k = own + dir;
                 if (k < 0 || k > 2) continue;
-                TrackVision.Track nt = r.tracks.get(k);
-                if (nt.blockedAtStart) continue;
-                if (laneTti[k] > bestTti) { bestTti = laneTti[k]; bestDir = dir; }
+                if (r.tracks.get(k).blockedAtStart) continue;
+                if (laneTti[k] <= threat + p.safeExtraMs) continue;
+                double score = Math.min(laneTti[k], 5000) + (p.seekCoins ? laneReward[k] * 4 : 0);
+                if (score > bestScore) { bestScore = score; bestDir = dir; }
             }
             if (bestDir != 0 && nowMs >= nextLaneOk) {
                 m = bestDir < 0 ? Move.LEFT : Move.RIGHT;
@@ -166,11 +181,29 @@ public final class SurferBrain {
                 if (laneTall[own]) { m = Move.JUMP; why = "boxed in, jump"; }
                 else { m = p.jumpLowObstacles ? Move.JUMP : Move.ROLL; why = "barrier: " + (m == Move.JUMP ? "jump" : "roll"); }
             } else why = "waiting";
-        } else if (p.preferMiddle && lane != 0 && nowMs >= nextLaneOk
-                && laneTti[1] > p.reactMs + 2 * p.safeExtraMs && threat > p.reactMs + p.safeExtraMs
-                && !r.tracks.get(1).blockedAtStart) {
-            m = lane < 0 ? Move.RIGHT : Move.LEFT;
-            why = "back to middle";
+        } else if (nowMs >= nextLaneOk && nowMs >= nextCoinOk && threat > react + p.safeExtraMs) {
+            // free to roam: go for coins / power-ups, else drift back to the middle
+            int dir = 0;
+            String reason = "";
+            if (p.seekCoins) {
+                double ownV = laneReward[own], bestV = Math.max(p.coinMin, ownV * p.coinRatio);
+                for (int d = -1; d <= 1; d += 2) {
+                    int k = own + d;
+                    if (k < 0 || k > 2 || r.tracks.get(k).blockedAtStart) continue;
+                    if (laneTti[k] < react + 2 * p.safeExtraMs) continue;
+                    if (laneReward[k] > bestV) { bestV = laneReward[k]; dir = d; reason = "coins " + (d < 0 ? "left" : "right"); }
+                }
+            }
+            if (dir == 0 && p.preferMiddle && lane != 0 && laneReward[own] < p.coinMin
+                    && laneTti[1] > react + 2 * p.safeExtraMs && !r.tracks.get(1).blockedAtStart) {
+                dir = lane < 0 ? 1 : -1;
+                reason = "back to middle";
+            }
+            if (dir != 0) {
+                m = dir < 0 ? Move.LEFT : Move.RIGHT;
+                why = reason;
+                nextCoinOk = nowMs + 450;
+            } else why = laneReward[own] >= p.coinMin ? "collecting" : "clear";
         } else why = "clear";
 
         if (m == Move.LEFT || m == Move.RIGHT) {
@@ -191,4 +224,25 @@ public final class SurferBrain {
     }
 
     public double getSpeed() { return speed; }
+
+    /** One compact line describing this frame, for the on-phone log. */
+    public String logLine(Move m) {
+        TrackVision.Result r = last;
+        StringBuilder sb = new StringBuilder(160);
+        if (r == null || !r.ok) {
+            sb.append("-- ").append(r == null ? "" : r.why);
+        } else {
+            sb.append(String.format(java.util.Locale.US, "vp=%.0f,%.0f P=%.0f lane=%d v=%.2f",
+                    r.vpX, r.vpY, vision.gridP, lastLane, speed));
+            for (int k = 0; k < r.tracks.size() && k < 3; k++) {
+                TrackVision.Track t = r.tracks.get(k);
+                sb.append(String.format(java.util.Locale.US, " |%d y%d s%d%s%s%s tti=%s c=%.0f", k, t.obstacleY, t.obstacleSpan,
+                        t.blockedAtStart ? " AT" : "", laneConfirmed[k] ? " C" : "", laneTall[k] ? " T" : "",
+                        Double.isInfinite(laneTti[k]) ? "-" : String.valueOf((int) laneTti[k]), laneReward[k]));
+            }
+        }
+        if (m != Move.NONE) sb.append(" => ").append(m);
+        sb.append(" | ").append(status);
+        return sb.toString();
+    }
 }

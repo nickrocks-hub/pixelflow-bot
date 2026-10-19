@@ -65,6 +65,8 @@ public final class TrackVision {
         public final List<Track> tracks = new ArrayList<>();
         public int ridgeCount;
         public double vpSharpness;
+        /** Coins / power-ups ahead in each lane (left, middle, right), nearer = worth more. */
+        public final double[] reward = new double[3];
         public String why = "";
     }
 
@@ -124,6 +126,7 @@ public final class TrackVision {
         pairTracks(res, yn, yf);
         if (res.tracks.isEmpty()) { res.why = "no tracks"; return res; }
         for (Track t : res.tracks) scanObstacle(t, yn, yf, s, res);
+        if (res.tracks.size() == 3) scanRewards(px, res, s);
         res.ok = true;
         return res;
     }
@@ -273,6 +276,42 @@ public final class TrackVision {
             t.left = res.lines.get(i); t.right = res.lines.get(i + 1);
             t.centerAtFeet = (t.left.xAt(feet, yn, yf) + t.right.xAt(feet, yn, yf)) / 2;
             res.tracks.add(t);
+        }
+    }
+
+    // ---- coins and power-ups
+    /** Reward is counted between these depths ahead of the runner (closer can't be reached in time). */
+    public double rewardNear = 0.45, rewardFar = 3.0;
+
+    /** Coin gold, also the glow around power-ups. */
+    public static boolean isGold(int c) {
+        int r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;
+        return r > 190 && g > 110 && b < 100 && r - b > 120;
+    }
+
+    private void scanRewards(int[] px, Result res, double s) {
+        double feet = h * runnerFeet;
+        double vx = res.vpX, vy = res.vpY;
+        int yTop = (int) Math.ceil(vy + (feet - vy) / (1 + rewardFar));
+        int yBot = (int) Math.floor(vy + (feet - vy) / (1 + rewardNear));
+        yTop = Math.max(yTop, (int) (h * 0.12));
+        double c0 = res.tracks.get(0).centerAtFeet, c1 = res.tracks.get(1).centerAtFeet, c2 = res.tracks.get(2).centerAtFeet;
+        double half = Math.abs(c2 - c0) / 4;              // half the lane spacing
+        double norm = 1.0 / (s * s);
+        for (int y = yTop; y <= yBot && y < h; y++) {
+            double k = (feet - vy) / (y - vy);
+            double depth = k - 1;
+            double wgt = norm / (0.5 + depth);
+            int row = y * w;
+            for (int x = 0; x < w; x++) {
+                if (!isGold(px[row + x])) continue;
+                double xf = vx + (x - vx) * k;               // where this pixel's track line is at the feet row
+                double d0 = Math.abs(xf - c0), d1 = Math.abs(xf - c1), d2 = Math.abs(xf - c2);
+                int lane = d0 < d1 ? (d0 < d2 ? 0 : 2) : (d1 < d2 ? 1 : 2);
+                double dm = Math.min(d0, Math.min(d1, d2));
+                if (dm > half) continue;                     // between lanes or outside the tracks
+                res.reward[lane] += wgt;
+            }
         }
     }
 

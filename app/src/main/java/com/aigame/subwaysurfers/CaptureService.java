@@ -93,6 +93,15 @@ public class CaptureService extends Service {
         BotState.applyTo(prefs, params);
         prefs.registerOnSharedPreferenceChangeListener(prefListener);
         brain = new SurferBrain(params);
+        if (prefs.getBoolean(BotState.K_LOGS, true)) {
+            log = new SessionLog(this, (name, ok, err) -> main.post(() -> {
+                String msg = ok ? "Log saved to Downloads/" + SessionLog.FOLDER + "/" + name
+                        : "Couldn't save log: " + err;
+                android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show();
+                SwipeService s2 = SwipeService.instance;
+                if (s2 != null) s2.flash(ok ? "Log saved ✓" : "Log not saved");
+            }));
+        }
 
         projection.registerCallback(new MediaProjection.Callback() {
             @Override public void onStop() { main.post(CaptureService.this::stopSelf); }
@@ -121,6 +130,7 @@ public class CaptureService extends Service {
         int h = Math.round((float) CAPTURE_WIDTH * rh / rw) & ~1;
         int dpi = getResources().getDisplayMetrics().densityDpi;
 
+        if (log != null) log.setInfo(infoText(w, h));
         thread = new HandlerThread("subway-vision");
         thread.start();
         Handler bg = new Handler(thread.getLooper());
@@ -158,18 +168,33 @@ public class CaptureService extends Service {
         }
 
         SwipeService svc = SwipeService.instance;
-        if (!BotState.running) return;
+        long now = SystemClock.uptimeMillis();
+        boolean run = BotState.running;
+        if (run != wasRunning) {
+            wasRunning = run;
+            if (log != null) {
+                log.event(now, run ? "START" : "STOP");
+                if (!run && loggedSinceSave) { log.save("stop"); loggedSinceSave = false; }
+            }
+        }
+        if (!run) return;
         if (BotState.resetRequested) {
             BotState.resetRequested = false;
             brain.reset();
         }
-        long now = SystemClock.uptimeMillis();
         if (!BotState.gameInFront()) {
             if (svc != null && now - lastStatusMs > 500) { lastStatusMs = now; svc.postStatus("Waiting for Subway Surfers…"); }
             brain.reset();
             return;
         }
         SurferBrain.Move m = brain.onFrame(px, w, h, now);
+        long took = SystemClock.uptimeMillis() - now;
+        boolean frozen = updateFrozen(px, w, h);
+        if (log != null) {
+            log.frame(px, w, h, now, took + "ms" + (frozen ? " FZ " : " ") + brain.logLine(m));
+            loggedSinceSave = true;
+            detectRunEnd(now, brain.last != null && brain.last.ok, frozen);
+        }
         if (svc != null) {
             if (m != SurferBrain.Move.NONE) svc.perform(m);
             if (now - lastStatusMs > 150 || m != SurferBrain.Move.NONE) {
@@ -177,6 +202,65 @@ public class CaptureService extends Service {
                 svc.postStatus(brain.status);
             }
         }
+    }
+
+    // ------------------------------------------------------------ logging
+
+    private SessionLog log;
+    private boolean wasRunning, loggedSinceSave, endSaved;
+    private long lastFrameMs, activeMs, frozenSince = -1, lostSince = -1;
+    private int[] prevLuma;
+
+    /** True when the picture hardly changed since the last frame (crashed, paused, menu). */
+    private boolean updateFrozen(int[] p, int w, int h) {
+        int step = 8, n = 0;
+        int cols = w / step, rows = h / step;
+        if (prevLuma == null || prevLuma.length != cols * rows) { prevLuma = new int[cols * rows]; return false; }
+        long diff = 0;
+        for (int y = 0; y < rows; y++) {
+            for (int x = 0; x < cols; x++) {
+                int c = p[(y * step) * w + x * step];
+                int l = ((c >> 16) & 0xFF) + ((c >> 8) & 0xFF) + (c & 0xFF);
+                diff += Math.abs(l - prevLuma[n]);
+                prevLuma[n++] = l;
+            }
+        }
+        return diff / (double) n / 3.0 < 1.5;
+    }
+
+    /** A run has ended when, after playing a while, the screen freezes or the tracks vanish. */
+    private void detectRunEnd(long now, boolean tracked, boolean frozen) {
+        long dt = lastFrameMs == 0 ? 0 : Math.min(500, now - lastFrameMs);
+        lastFrameMs = now;
+        if (tracked && !frozen) {
+            activeMs += dt;
+            if (activeMs > 3000) endSaved = false;
+        }
+        frozenSince = frozen ? (frozenSince < 0 ? now : frozenSince) : -1;
+        lostSince = !tracked ? (lostSince < 0 ? now : lostSince) : -1;
+        boolean ended = (frozenSince >= 0 && now - frozenSince > 1200) || (lostSince >= 0 && now - lostSince > 2500);
+        if (ended && !endSaved && activeMs > 3000) {
+            endSaved = true;
+            activeMs = 0;
+            log.event(now, "RUN END (" + (frozenSince >= 0 ? "screen froze" : "tracks lost") + ")");
+            log.save("crash");
+            loggedSinceSave = false;
+        }
+    }
+
+    private String infoText(int w, int h) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("app: AI GAME SUBWAY SURFERS ").append(BuildConfigCompat.version(this)).append('\n');
+        sb.append("phone: ").append(Build.MANUFACTURER).append(' ').append(Build.MODEL)
+                .append(" Android ").append(Build.VERSION.RELEASE).append(" (SDK ").append(Build.VERSION.SDK_INT).append(")\n");
+        sb.append("capture: ").append(w).append('x').append(h).append('\n');
+        SurferBrain.Params q = params;
+        sb.append("settings: react=").append(q.reactMs).append(" latency=").append(q.latencyMs)
+                .append(" safeExtra=").append(q.safeExtraMs).append(" laneCooldown=").append(q.laneCooldownMs)
+                .append(" jumpLow=").append(q.jumpLowObstacles).append(" preferMiddle=").append(q.preferMiddle)
+                .append(" seekCoins=").append(q.seekCoins).append(" runnerOffset=").append(q.runnerOffsetPct).append('\n');
+        sb.append("log line: time_ms analyse_ms [FZ=frozen] vp P lane(-1..1) speed | per lane k: y(obstacle row) s(span) AT C(confirmed) T(tall) tti(ms) c(coins) => move | status\n");
+        return sb.toString();
     }
 
     private void startForegroundCompat() {
@@ -220,6 +304,8 @@ public class CaptureService extends Service {
             try { projection.stop(); } catch (RuntimeException ignored) { }
         }
         if (thread != null) thread.quitSafely();
+        if (log != null) log.close(loggedSinceSave ? "capture-ended" : null);
+        log = null;
         display = null; reader = null; projection = null; thread = null;
         super.onDestroy();
     }

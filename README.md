@@ -25,7 +25,15 @@ An Android app that plays **Subway Surfers** (`com.kiloo.subwaysurf`) by itself,
 3. **Start bot and open Subway Surfers**, share the entire screen, start a run in the game.
 4. Use the floating START/STOP button to pause and resume.
 
-Tuning sliders (reaction distance, lane-change margin, runner position…) are on the app's main screen.
+Tuning sliders (reaction distance, phone delay, lane-change margin, runner position…) are on the app's main screen.
+Drag the floating panel by its ⠿ handle to move it.
+
+## Logs
+
+After each run (crash / game over) and when you press STOP, the app saves
+`Download/AI GAME SUBWAY SURFERS/subway_<date>_<n>_<reason>.zip` with `log.txt` (one line per frame),
+`info.txt` (phone + settings) and the last 8 seconds of frames. Replay one on a computer with
+`java -cp out ReplayZip subway_....zip`.
 
 ## Testing without a phone
 

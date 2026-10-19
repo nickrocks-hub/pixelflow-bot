@@ -32,7 +32,7 @@ public class MainActivity extends Activity {
 
     private TextView accessStatus;
     private Button accessButton;
-    private boolean startAfterPermission;
+    private boolean startAfterPermission, askedStorage, askedNotif;
 
     @Override
     protected void onCreate(Bundle b) {
@@ -97,11 +97,14 @@ public class MainActivity extends Activity {
 
         // settings
         root.addView(header("Tuning"));
+        root.addView(toggle(prefs, BotState.K_COINS, "Go for coins and power-ups", true));
         root.addView(toggle(prefs, BotState.K_JUMP_LOW, "Jump over barriers (off = roll under)", true));
         root.addView(toggle(prefs, BotState.K_MIDDLE, "Move back to the middle lane when it's clear", true));
-        root.addView(slider(prefs, BotState.K_REACT, "Reaction distance", 200, 900, 420, " ms",
-                "How early it dodges. Raise if it crashes into things; lower if it dodges too early and "
+        root.addView(slider(prefs, BotState.K_REACT, "Reaction distance", 300, 1300, 650, " ms",
+                "How early it dodges. Raise if it swipes too late; lower if it dodges too early and "
                         + "runs into the next obstacle."));
+        root.addView(slider(prefs, BotState.K_LATENCY, "Phone delay", 0, 400, 120, " ms",
+                "Time between the screen changing and the swipe landing on your phone. Raise on slower phones."));
         root.addView(slider(prefs, BotState.K_SAFE, "Safety margin for lane changes", 100, 900, 350, " ms",
                 "A side lane must be clear this much longer than yours before it moves there."));
         root.addView(slider(prefs, BotState.K_LANE_CD, "Pause between lane changes", 120, 500, 230, " ms",
@@ -112,9 +115,15 @@ public class MainActivity extends Activity {
         root.addView(slider(prefs, BotState.K_SWIPE_Y, "Swipe height on screen", 35, 80, 60, " %",
                 "Where on the screen the swipes start."));
 
+        root.addView(toggle(prefs, BotState.K_LOGS, "Save a log to Downloads after each run", true));
+        root.addView(hint("Saved to Download/" + SessionLog.FOLDER + " as a .zip when a run ends and when you press STOP. "
+                + "It holds what the bot saw and did plus the last few seconds of the screen — upload it to Claude to tune the bot."));
+
         root.addView(header("Good to know"));
-        root.addView(body("• It reacts to obstacles in your lane: moves to a free side lane if there is one, "
+        root.addView(body("• Drag the floating panel by its ⠿ handle to move it anywhere.\n"
+                + "• It reacts to obstacles in your lane: moves to a free side lane if there is one, "
                 + "otherwise jumps over short barriers and trains it can't get around.\n"
+                + "• When your lane is clear it moves over to lines of coins and power-ups if that lane is safe.\n"
                 + "• Standing on train roofs and flying with the jetpack, it stays still.\n"
                 + "• It only swipes while Subway Surfers is the app in front, and it never presses buttons, "
                 + "ads or purchases. Revive, hoverboards and menus are up to you."));
@@ -137,6 +146,13 @@ public class MainActivity extends Activity {
         t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
         t.setPadding(0, dp(4), 0, dp(4));
         return t;
+    }
+
+    private TextView hint(String s) {
+        TextView h = body(s);
+        h.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        h.setAlpha(0.7f);
+        return h;
     }
 
     private Button button(String s, View.OnClickListener l) {
@@ -220,10 +236,19 @@ public class MainActivity extends Activity {
             startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
             return;
         }
-        if (Build.VERSION.SDK_INT >= 33
+        if (Build.VERSION.SDK_INT >= 33 && !askedNotif
                 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            askedNotif = true;
             startAfterPermission = true;
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_NOTIF);
+            return;
+        }
+        if (Build.VERSION.SDK_INT < 29 && BotState.prefs(this).getBoolean(BotState.K_LOGS, true)
+                && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
+                && !askedStorage) {
+            askedStorage = true;
+            startAfterPermission = true;
+            requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQ_NOTIF);
             return;
         }
         if (BotState.captureActive) {
@@ -243,9 +268,8 @@ public class MainActivity extends Activity {
         super.onRequestPermissionsResult(code, perms, results);
         if (code == REQ_NOTIF && startAfterPermission) {
             startAfterPermission = false;
-            // the notification is optional for us; continue either way
-            MediaProjectionManager mpm = (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
-            startActivityForResult(mpm.createScreenCaptureIntent(), REQ_CAPTURE);
+            // notifications / storage are optional for us; continue either way
+            requestStart();
         }
     }
 

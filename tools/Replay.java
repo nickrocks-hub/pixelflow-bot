@@ -35,7 +35,8 @@ public class Replay {
                 if (f % every == 0 || m != SurferBrain.Move.NONE) {
                     System.out.printf("%4d %6.2fs %-5s v=%.2f tti=%s/%s/%s %s  %s%n", f, f / fps, m == SurferBrain.Move.NONE ? "" : m,
                             brain.getSpeed(), fmt(brain.laneTti[0], brain.laneTall[0]), fmt(brain.laneTti[1], brain.laneTall[1]),
-                            fmt(brain.laneTti[2], brain.laneTall[2]), r.ok ? "" : r.why, brain.status);
+                            fmt(brain.laneTti[2], brain.laneTall[2]), r.ok ? "" : r.why,
+                            String.format("c=%.0f/%.0f/%.0f %s", brain.laneReward[0], brain.laneReward[1], brain.laneReward[2], brain.status));
                 }
             }
         }
