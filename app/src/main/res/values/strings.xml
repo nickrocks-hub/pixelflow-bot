@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Rider Bot</string>
+    <string name="accessibility_description">Lets Rider Bot press and hold the screen to play the game Rider. It only touches the screen while you have started the bot from its floating button, and it does not read any text or content from your apps.</string>
+</resources>
