@@ -48,4 +48,4 @@ java -cp out DebugFrames out.png frame1.png frame2.png   # draws rails, lanes, o
 
 ## Build
 
-GitHub Actions builds the debug APK on every push to the `subwaysurfers` branch and attaches it to a release.
+GitHub Actions builds the release APK (signed with the committed `app/release.keystore`, so updates install over each other) on every push to the `subwaysurfers` branch and attaches it to a GitHub release.

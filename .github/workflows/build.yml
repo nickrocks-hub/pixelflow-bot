@@ -23,12 +23,12 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-      - name: Build debug APK
+      - name: Build release APK
         id: build
         continue-on-error: true
         run: |
           set -o pipefail
-          gradle :app:assembleDebug --console=plain 2>&1 | tee build.log
+          gradle :app:assembleRelease --console=plain 2>&1 | tee build.log
 
       - name: Report build errors
         if: steps.build.outcome == 'failure'
@@ -39,7 +39,7 @@ jobs:
           exit 1
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk AI-GAME-SUBWAY-SURFERS-${{ github.run_number }}.apk
+        run: cp app/build/outputs/apk/release/app-release.apk AI-GAME-SUBWAY-SURFERS-${{ github.run_number }}.apk
 
       - uses: actions/upload-artifact@v4
         with:

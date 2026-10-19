@@ -15,10 +15,15 @@ import java.util.List;
  * rails show up as thin bright lines, and they disappear exactly where a train
  * or barrier stands on them. So:
  *   1. mark "ridge" pixels (brighter than the pixels a few px left and right),
- *   2. find the straight rail lines with a two-row Hough transform,
- *   3. keep lines that meet at one vanishing point and pair them into tracks,
+ *   2. find the vanishing point the rails meet at (the point that lines them up sharpest),
+ *   3. fit a regular grid of the three tracks (left, middle, right),
  *   4. walk each track's rails from the runner towards the horizon; where both
  *      rails vanish is the nearest obstacle in that lane.
+ *
+ * tracks[0..2] are relative to the runner: the lane to its left, its own lane (the
+ * track nearest the screen centre) and the lane to its right. The camera only partly
+ * follows the runner, so how far its track sits from the centre tells which real lane
+ * it is in (see ownOffset).
  */
 public final class TrackVision {
 
@@ -56,6 +61,12 @@ public final class TrackVision {
         public boolean railsResume;
         /** The rails are hidden right in front of the runner (on a train roof, or about to hit). */
         public boolean blockedAtStart;
+        /** Neighbour lanes: a train alongside the runner hides this lane's rail nearest to us. */
+        public boolean sideBlocked;
+        /** The left / right rail is hidden next to the runner's position (a train alongside). */
+        public boolean leftRailHidden, rightRailHidden;
+        /** Fraction of rows next to the runner where the left / right rail was seen. */
+        public double leftSeen, rightSeen;
     }
 
     public static final class Result {
@@ -65,7 +76,17 @@ public final class TrackVision {
         public final List<Track> tracks = new ArrayList<>();
         public int ridgeCount;
         public double vpSharpness;
-        /** Coins / power-ups ahead in each lane (left, middle, right), nearer = worth more. */
+        /** Rail evidence for the fitted grid: [1..3] = its three tracks, [0]/[4] = a 4th track either side. */
+        public final double[] slotScore = new double[5];
+        /**
+         * Runner's track relative to the screen centre, in lane widths, at the runner's feet.
+         * The camera only partly follows the runner: about -0.29 in the left lane, 0 in the
+         * middle lane, +0.29 in the right lane.
+         */
+        public double ownOffset;
+        /** Runner's track centre at the near reference row. */
+        public double ownNear;
+        /** Coins / power-ups ahead in each lane (left, own, right), nearer = worth more. */
         public final double[] reward = new double[3];
         public String why = "";
     }
@@ -113,19 +134,30 @@ public final class TrackVision {
         // ---- vanishing point: the point that makes the rails line up sharpest.
         double[] vp;
         if (!Double.isNaN(hintX)) {
-            vp = searchVp(hintX - 30 * s, hintX + 30 * s, hintY - 20 * s, hintY + 20 * s, 3 * s, 2, yn);
+            vp = searchVp(hintX - 24 * s, hintX + 24 * s, hintY - 18 * s, hintY + 18 * s, 4 * s, 3, yn);
         } else {
-            vp = searchVp(w * vpXMin, w * vpXMax, h * vpYMin, h * vpYMax, 6 * s, 3, yn);
+            vp = searchVp(w * vpXMin, w * vpXMax, h * vpYMin, h * vpYMax, 6 * s, 4, yn);
         }
-        vp = searchVp(vp[0] - 4 * s, vp[0] + 4 * s, vp[1] - 4 * s, vp[1] + 4 * s, 1 * s, 1, yn);
+        vp = searchVp(vp[0] - 3 * s, vp[0] + 3 * s, vp[1] - 3 * s, vp[1] + 3 * s, 1 * s, 2, yn);
         if (vp[1] <= h * vpYMin + 1 || vp[1] >= h * vpYMax - 1) { res.why = "no vanishing point"; return res; }
         res.vpX = vp[0]; res.vpY = vp[1];
         res.vpSharpness = vp[2];
         fitGrid(res, yn, yf, s, y0, y1);
         if (res.lines.size() < 2) { res.why = "no rail grid"; return res; }
+        centreOnRunner(res, yn, yf);
         pairTracks(res, yn, yf);
         if (res.tracks.isEmpty()) { res.why = "no tracks"; return res; }
+        if (res.tracks.size() == 3) {
+            double c0 = res.tracks.get(0).centerAtFeet, c1 = res.tracks.get(1).centerAtFeet, c2 = res.tracks.get(2).centerAtFeet;
+            res.ownOffset = (c1 - w * (0.5 + runnerOffset)) / ((c2 - c0) / 2);
+        }
         for (Track t : res.tracks) scanObstacle(t, yn, yf, s, res);
+        if (res.tracks.size() == 3) {
+            // the neighbour's rail nearest us must be visible level with the runner
+            for (int k = 0; k < 3; k++) checkSides(res.tracks.get(k), yn, yf, s);
+            res.tracks.get(0).sideBlocked = res.tracks.get(0).rightRailHidden;
+            res.tracks.get(2).sideBlocked = res.tracks.get(2).leftRailHidden;
+        }
         if (res.tracks.size() == 3) scanRewards(px, res, s);
         res.ok = true;
         return res;
@@ -155,22 +187,36 @@ public final class TrackVision {
      *  vertical edges that would otherwise pull it up to infinity). */
     public double vpXMin = 0.25, vpXMax = 0.75, vpYMin = 0.15, vpYMax = 0.30;
 
+    private int[] stamp = new int[0];
+    private int epoch = 0;
+    private float[] rowK = new float[0];
+
     private double[] searchVp(double xa, double xb, double ya, double yb, double step, int sub, double yn) {
         xa = Math.max(xa, w * vpXMin); xb = Math.min(xb, w * vpXMax);
         ya = Math.max(ya, h * vpYMin); yb = Math.min(yb, h * vpYMax);
         final int off = 2 * w, len = 5 * w;
-        if (vhist.length != len) vhist = new int[len];
+        if (vhist.length != len) { vhist = new int[len]; stamp = new int[len]; }
+        if (rowK.length != h) rowK = new float[h];
+        final int[] xs = rxs, ys = rys, hist = vhist, st = stamp;
+        final float[] rk = rowK;
         double best = -1, bx = (xa + xb) / 2, by = (ya + yb) / 2;
         for (double vy = ya; vy <= yb + 1e-9; vy += step) {
+            for (int y = 0; y < h; y++) {
+                double dy = y - vy;
+                rk[y] = dy < 6 ? 0f : (float) ((yn - vy) / dy);
+            }
             for (double vx = xa; vx <= xb + 1e-9; vx += step) {
-                Arrays.fill(vhist, 0);
+                final float fvx = (float) vx;
+                final int ep = ++epoch;
                 long sc = 0; int used = 0;
                 for (int i = 0; i < rn; i += sub) {
-                    double dy = rys[i] - vy;
-                    if (dy < 6) continue;
-                    int j = (int) Math.round(vx + (rxs[i] - vx) * (yn - vy) / dy) + off;
+                    float k = rk[ys[i]];
+                    if (k == 0f) continue;
+                    int j = (int) (fvx + (xs[i] - fvx) * k + 0.5f) + off;
                     if (j < 0 || j >= len) continue;
-                    int c = vhist[j]++;
+                    int c;
+                    if (st[j] != ep) { st[j] = ep; c = 0; } else c = hist[j];
+                    hist[j] = c + 1;
                     sc += 2L * c + 1;        // running sum of squares
                     used++;
                 }
@@ -186,10 +232,16 @@ public final class TrackVision {
     public double gaugeRatio = 0.45;
     /** Lane pitch at the near row, as a fraction of (near row - vanishing point). */
     public double pitchMin = 0.38, pitchMax = 0.72;
-    private float[] hist = new float[0];
-    /** Fitted grid at the near row: centre of the middle-scored track and lane pitch. */
+    private float[] hist = new float[0], sm = new float[0], rt = new float[0];
+    /** Lane pitch last frame (NaN = unknown); narrows the search. */
+    public double pitchHint = Double.NaN;
+    /** Runner's usual horizontal position, fraction of width from centre. */
+    public double runnerOffset = 0;
+    /** How much rails where a 4th track would be count against a grid fit. */
+    public double outsidePenalty = 0.6;
+    /** Fitted grid at the near row: centre of the middle track and lane pitch. */
     public double gridC, gridP;
-    /** Rail-evidence score of each fitted track: [0] = the one left of centre, etc. */
+    /** Rail evidence: [1..3] = left, middle, right track, [0] / [4] = where a 4th track would be. */
     public final double[] trackScore = new double[5];
 
     /**
@@ -203,44 +255,65 @@ public final class TrackVision {
         Arrays.fill(hist, 0);
         double vx = res.vpX, vy = res.vpY;
         int yStart = (int) Math.max(y0, vy + 8 * s);
-        for (int y = yStart; y < y1; y++) {
-            double k = (yn - vy) / (y - vy);
-            int row = y * w;
-            for (int x = 0; x < w; x++) {
-                if (!ridge[row + x]) continue;
-                int i = (int) Math.round(vx + (x - vx) * k) + off;
-                if (i >= 0 && i < len) hist[i] += 1f;
-            }
+        if (rowK.length != h) rowK = new float[h];
+        for (int y = 0; y < h; y++) rowK[y] = y < yStart ? 0f : (float) ((yn - vy) / (y - vy));
+        final float fvx = (float) vx;
+        for (int i = 0; i < rn; i++) {
+            float k = rowK[rys[i]];
+            if (k == 0f) continue;
+            int j = (int) (fvx + (rxs[i] - fvx) * k + 0.5f) + off;
+            if (j >= 0 && j < len) hist[j] += 1f;
         }
         // smooth [1 2 3 2 1]
-        float[] sm = new float[len];
+        if (sm.length != len) sm = new float[len];
         for (int i = 2; i < len - 2; i++)
             sm[i] = hist[i - 2] + 2 * hist[i - 1] + 3 * hist[i] + 2 * hist[i + 1] + hist[i + 2];
         double bestScore = -1, bestC = 0, bestP = 0, bestG = 0;
         double pMin = pitchMin * (yn - vy), pMax = pitchMax * (yn - vy);
+        if (!Double.isNaN(pitchHint)) {
+            pMin = Math.max(pMin, pitchHint * 0.88);
+            pMax = Math.min(pMax, pitchHint * 1.12);
+            if (pMin > pMax) { pMin = pitchMin * (yn - vy); pMax = pitchMax * (yn - vy); }
+        }
         int tol = Math.max(2, (int) Math.round(4 * s));
         // sqrt per rail: a fit that explains all six rails beats one that explains two huge ones
-        float[] rt = new float[len];
+        if (rt.length != len) rt = new float[len];
         for (int i = 0; i < len; i++) {
             float m = 0;
             for (int d = -tol; d <= tol; d++) { int j = i + d; if (j >= 0 && j < len && sm[j] > m) m = sm[j]; }
             rt[i] = (float) Math.sqrt(m);
         }
-        for (double P = pMin; P <= pMax; P += 2 * s) {
-            for (double gr = gaugeRatio - 0.05; gr <= gaugeRatio + 0.051; gr += 0.025) {
-                double g = gr * P;
-                for (double c = -0.5 * w; c <= 1.5 * w; c += 1) {
-                    double sc = 0;
-                    for (int k = -1; k <= 1; k++) sc += at(rt, c + k * P - g / 2, off) + at(rt, c + k * P + g / 2, off);
-                    if (sc > bestScore) { bestScore = sc; bestC = c; bestP = P; bestG = g; }
+        // Fit the three real tracks. There are only three, so rails where a 4th track
+        // would be count against the fit: this stops the grid slipping one lane sideways.
+        // coarse pass, then a fine pass around the best coarse fit
+        for (int pass = 0; pass < 2; pass++) {
+            double pa, pb, pStep, ca, cb, cStep;
+            if (pass == 0) { pa = pMin; pb = pMax; pStep = 4 * s; ca = -0.5 * w; cb = 1.5 * w; cStep = 2; }
+            else {
+                if (bestScore <= 0) break;
+                pa = Math.max(pMin, bestP - 4 * s); pb = Math.min(pMax, bestP + 4 * s); pStep = 1;
+                ca = bestC - 3; cb = bestC + 3; cStep = 1;
+            }
+            for (double P = pa; P <= pb + 1e-9; P += pStep) {
+                for (double gr = gaugeRatio - 0.03; gr <= gaugeRatio + 0.031; gr += 0.03) {
+                    double g = gr * P;
+                    for (double c = ca; c <= cb + 1e-9; c += cStep) {
+                        double sc = 0;
+                        for (int k = -1; k <= 1; k++) sc += at(rt, c + k * P - g / 2, off) + at(rt, c + k * P + g / 2, off);
+                        sc -= outsidePenalty * (at(rt, c - 2 * P - g / 2, off) + at(rt, c - 2 * P + g / 2, off)
+                                + at(rt, c + 2 * P - g / 2, off) + at(rt, c + 2 * P + g / 2, off));
+                        if (sc > bestScore) { bestScore = sc; bestC = c; bestP = P; bestG = g; }
+                    }
                 }
             }
         }
         if (bestScore <= 0) return;
         gridC = bestC; gridP = bestP;
+        java.util.Arrays.fill(res.slotScore, 0);
         double g = bestG;
         for (int k = -2; k <= 2; k++) {
             trackScore[k + 2] = peak(sm, bestC + k * bestP - g / 2, off) + peak(sm, bestC + k * bestP + g / 2, off);
+            res.slotScore[k + 2] = trackScore[k + 2];
         }
         for (int k = -1; k <= 1; k++) {
             for (int side = -1; side <= 1; side += 2) {
@@ -267,6 +340,31 @@ public final class TrackVision {
             if (j >= 0 && j < sm.length && sm[j] > best) best = sm[j];
         }
         return best;
+    }
+
+    /** Rebuild the six rail lines around the fitted track nearest the screen centre. */
+    private void centreOnRunner(Result res, double yn, double yf) {
+        double vx = res.vpX, vy = res.vpY;
+        double feet = h * runnerFeet;
+        double xc = w * (0.5 + runnerOffset);
+        double g = res.lines.get(1).xn - res.lines.get(0).xn;
+        double best = Double.MAX_VALUE, own = gridC;
+        for (int k = -2; k <= 2; k++) {
+            double cn = gridC + k * gridP;
+            double cf = vx + (cn - vx) * (feet - vy) / (yn - vy);
+            double d = Math.abs(cf - xc);
+            if (d < best) { best = d; own = cn; }
+        }
+        res.lines.clear();
+        for (int k = -1; k <= 1; k++) {
+            for (int side = -1; side <= 1; side += 2) {
+                Line l = new Line();
+                l.xn = own + k * gridP + side * g / 2;
+                l.xf = vx + (l.xn - vx) * (yf - vy) / (yn - vy);
+                res.lines.add(l);
+            }
+        }
+        res.ownNear = own;
     }
 
     private void pairTracks(Result res, double yn, double yf) {
@@ -325,6 +423,39 @@ public final class TrackVision {
             if (xx >= 0 && xx < w && ridge[row + xx]) return true;
         }
         return false;
+    }
+
+    /** Rows beside the runner checked for a train alongside. */
+    public double sideTop = 0.60, sideBottom = 0.82;
+
+    /**
+     * Before changing lane, the target lane's rail nearest the runner must be visible
+     * level with the runner; a train alongside hides it.
+     */
+    private void checkSides(Track t, double yn, double yf, double s) {
+        t.leftSeen = railSeen(t.left, yn, yf, s);
+        t.rightSeen = railSeen(t.right, yn, yf, s);
+        t.leftRailHidden = t.leftSeen < 0.35;
+        t.rightRailHidden = t.rightSeen < 0.35;
+    }
+
+    private double railSeen(Line l, double yn, double yf, double s) {
+        int tol = Math.max(1, (int) Math.round(2 * s));
+        int y0 = (int) (h * sideTop), y1 = (int) (h * sideBottom);
+        int margin = Math.max(2, (int) Math.round(3 * s));
+        int rows = 0, seen = 0;
+        for (int y = y0; y < y1; y += 2) {
+            double x = l.xAt(y, yn, yf);
+            if (x < margin || x >= w - margin) continue;
+            rows++;
+            boolean hit = false;
+            for (int k = 0; k < 3 && !hit; k++) {
+                int yy = y + k;
+                if (yy < h && railAt(l.xAt(yy, yn, yf), yy, tol)) hit = true;
+            }
+            if (hit) seen++;
+        }
+        return rows < 3 ? 0 : seen / (double) rows;
     }
 
     private void scanObstacle(Track t, double yn, double yf, double s, Result res) {

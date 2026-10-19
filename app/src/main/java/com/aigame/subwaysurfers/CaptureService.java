@@ -131,7 +131,8 @@ public class CaptureService extends Service {
         int dpi = getResources().getDisplayMetrics().densityDpi;
 
         if (log != null) log.setInfo(infoText(w, h));
-        thread = new HandlerThread("subway-vision");
+        // high priority so the analysis runs on a fast core, ahead of the logger
+        thread = new HandlerThread("subway-vision", android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY);
         thread.start();
         Handler bg = new Handler(thread.getLooper());
         reader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 3);
@@ -250,6 +251,7 @@ public class CaptureService extends Service {
             log.event(now, "RUN END (" + (frozenSince >= 0 ? "screen froze" : "tracks lost") + ")");
             log.save("crash");
             loggedSinceSave = false;
+            brain.reset();
         }
     }
 

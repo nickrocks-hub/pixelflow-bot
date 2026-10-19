@@ -10,14 +10,28 @@ android {
         applicationId = "com.aigame.subwaysurfers"
         minSdk = 26          // gesture dispatch with continued strokes, adaptive icons
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.2"
+        versionCode = 4
+        versionName = "1.3"
+    }
+
+    // Fixed key committed to the repo, so every build from GitHub installs as an update.
+    signingConfigs {
+        create("fixed") {
+            storeFile = file("release.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
+        // Release build: not debuggable, so Android runs the vision code at full speed.
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("fixed")
+        }
+        debug {
+            signingConfig = signingConfigs.getByName("fixed")
         }
     }
 

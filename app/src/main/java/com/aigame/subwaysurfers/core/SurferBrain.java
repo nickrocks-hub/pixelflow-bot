@@ -8,6 +8,12 @@ package com.aigame.subwaysurfers.core;
  * D = (feetY - vpY) / (y - vpY) - 1. D is 0 at the runner's feet and grows
  * towards the horizon, proportional to real distance along the track, so the
  * game's speed shows up as a steady dD/dt that the brain measures.
+ *
+ * Lanes: the vision reports tracks relative to the runner (left, own, right).
+ * Which real lane the runner is in (left / middle / right) is a belief: runs
+ * start in the middle, our own swipes shift it, and rails seen where a track
+ * can only exist from certain lanes correct it. The bot never swipes towards a
+ * side where there may be no track, nor into a lane with a train alongside.
  */
 public final class SurferBrain {
 
@@ -38,21 +44,20 @@ public final class SurferBrain {
         public int runnerOffsetPct = 0;
         /** Starting guess for game speed, depth units per second (refined while playing). */
         public double startSpeed = 2.4;
+        /** Only move towards a side if we're at least this sure a track exists there. */
+        public double laneSure = 0.8;
     }
 
     public final Params p;
     public final TrackVision vision = new TrackVision();
 
-    // smoothed geometry
-    private double vpX = Double.NaN, vpY = Double.NaN;
     private int noTrackFrames;
+    private double pitch = Double.NaN;
     // speed estimate (depth units / s)
     private double speed;
-    // lane belief: -1 left, 0 middle, +1 right
-    private int lane = 0;
-    private int laneVotes;
-    private int pendingLaneMove;    // expected change from our own swipe
-    private long pendingUntil;
+    /** Belief that the runner is in the left / middle / right lane. */
+    public final double[] belief = new double[3];
+    private long laneChangeUntil;      // camera is panning after our swipe
     private long nextLaneOk, nextAirOk, nextCoinOk;
 
     // last-frame info for the overlay / replay tool
@@ -66,57 +71,96 @@ public final class SurferBrain {
     private long prevFrameMs;
     public final boolean[] laneConfirmed = new boolean[3];
     public final boolean[] laneTall = new boolean[3];
+    public final boolean[] laneOk = new boolean[3];
     public int lastLane;
 
     public SurferBrain(Params p) { this.p = p; reset(); }
 
     public void reset() {
         speed = p.startSpeed;
-        lane = 0; laneVotes = 0; pendingLaneMove = 0;
+        belief[0] = 0.05; belief[1] = 0.9; belief[2] = 0.05;   // every run starts in the middle
+        laneChangeUntil = 0;
         nextLaneOk = nextAirOk = nextCoinOk = 0;
-        for (int k = 0; k < 3; k++) laneReward[k] = 0;
         noTrackFrames = 0; prevFrameMs = 0;
-        for (int k = 0; k < 3; k++) { prevD[k] = Double.NaN; approach[k] = 0; }
-        vpX = vpY = Double.NaN;
+        pitch = Double.NaN;
+        vision.hintX = vision.hintY = Double.NaN;
+        vision.pitchHint = Double.NaN;
+        for (int k = 0; k < 3; k++) { prevD[k] = Double.NaN; approach[k] = 0; laneReward[k] = 0; }
     }
 
-    private double depth(double y, double feetY) {
+    private double depth(double y, double feetY, double vpY) {
         double dy = y - vpY;
         if (dy <= 1) return 99;
         return (feetY - vpY) / dy - 1;
     }
 
+    /** -1 left, 0 middle, +1 right: the most likely lane. */
+    public int lane() {
+        int b = 1;
+        for (int k = 0; k < 3; k++) if (belief[k] > belief[b]) b = k;
+        return b - 1;
+    }
+
+    private void normalise() {
+        double t = belief[0] + belief[1] + belief[2];
+        for (int k = 0; k < 3; k++) belief[k] = Math.max(0.01, belief[k] / t);
+        t = belief[0] + belief[1] + belief[2];
+        for (int k = 0; k < 3; k++) belief[k] /= t;
+    }
+
+    /** Our swipe moved the runner one lane (most likely; a bump would bounce it back). */
+    private void shiftBelief(int dir) {
+        double l = belief[0], m = belief[1], r = belief[2];
+        if (dir < 0) { belief[0] = l + 0.9 * m; belief[1] = 0.1 * m + 0.9 * r; belief[2] = 0.1 * r; }
+        else { belief[2] = r + 0.9 * m; belief[1] = 0.1 * m + 0.9 * l; belief[0] = 0.1 * l; }
+        normalise();
+    }
+
+    /** Runner's track offset from screen centre (lane widths) in each real lane. */
+    public double sideOffset = 0.29;
+
+    /**
+     * The camera only partly follows the runner, so the runner's track sits about
+     * 0.29 lane widths left of the screen centre in the left lane, centred in the
+     * middle lane and 0.29 right in the right lane.
+     */
+    private void observeLanes(TrackVision.Result r) {
+        double e = r.ownOffset;
+        double half = sideOffset / 2;
+        int seen;
+        if (Math.abs(e) < half - 0.04) seen = 0;
+        else if (e <= -half - 0.04 && e > -sideOffset - 0.2) seen = -1;
+        else if (e >= half + 0.04 && e < sideOffset + 0.2) seen = 1;
+        else return;                                   // in between: no opinion
+        for (int k = 0; k < 3; k++) belief[k] *= (k - 1 == seen) ? 1.0 : 0.45;
+        normalise();
+    }
+
     public Move onFrame(int[] px, int w, int h, long nowMs) {
+        vision.runnerOffset = p.runnerOffsetPct / 100.0;
+        vision.pitchHint = pitch;
         TrackVision.Result r = vision.analyse(px, w, h);
         last = r;
         if (!r.ok || r.tracks.size() != 3) {
             noTrackFrames++;
             if (noTrackFrames > 3) { vision.hintX = Double.NaN; vision.hintY = Double.NaN; }
+            if (noTrackFrames > 10) pitch = Double.NaN;
+            for (int k = 0; k < 3; k++) { prevD[k] = Double.NaN; approach[k] = 0; laneConfirmed[k] = false; }
             status = noTrackFrames > 10 ? "Looking for the tracks…" : status;
             return Move.NONE;
         }
         noTrackFrames = 0;
         vision.hintX = r.vpX; vision.hintY = r.vpY;
-        // smooth the vanishing point a little (it jitters by a pixel or two)
-        if (Double.isNaN(vpX)) { vpX = r.vpX; vpY = r.vpY; }
-        else { vpX += 0.5 * (r.vpX - vpX); vpY += 0.5 * (r.vpY - vpY); }
+        pitch = Double.isNaN(pitch) ? vision.gridP : pitch + 0.3 * (vision.gridP - pitch);
         double feetY = h * vision.runnerFeet;
-
-        // ---- which lane is the runner in? The track nearest the runner's screen x.
-        double runnerX = w * (0.5 + p.runnerOffsetPct / 100.0);
-        int seen = 0; double best = 1e9;
-        for (int k = 0; k < 3; k++) {
-            double d = Math.abs(r.tracks.get(k).centerAtFeet - runnerX);
-            if (d < best) { best = d; seen = k - 1; }
-        }
-        if (seen == lane) laneVotes = 0;
-        else {
-            boolean expected = nowMs < pendingUntil && seen == lane + pendingLaneMove;
-            if (expected || ++laneVotes >= 4) { lane = seen; laneVotes = 0; pendingLaneMove = 0; }
-        }
+        boolean panning = nowMs < laneChangeUntil;
+        if (!panning && !r.tracks.get(1).blockedAtStart) observeLanes(r);
+        int lane = lane();
         lastLane = lane;
+        boolean leftExists = belief[0] < 1 - p.laneSure;
+        boolean rightExists = belief[2] < 1 - p.laneSure;
 
-        // ---- obstacles per lane, as time to impact
+        // ---- obstacles per lane (0 = left of us, 1 = ours, 2 = right), as time to impact
         double dt = prevFrameMs == 0 ? 0 : Math.min(0.25, (nowMs - prevFrameMs) / 1000.0);
         prevFrameMs = nowMs;
         double vSum = 0; int vN = 0;
@@ -127,8 +171,8 @@ public final class SurferBrain {
                 prevD[k] = Double.NaN; approach[k] = 0; laneConfirmed[k] = false;
                 continue;
             }
-            double d0 = depth(t.obstacleY, feetY);
-            double d1 = depth(t.obstacleY - t.obstacleSpan, feetY);
+            double d0 = depth(t.obstacleY, feetY, r.vpY);
+            double d1 = depth(t.obstacleY - t.obstacleSpan, feetY, r.vpY);
             laneTti[k] = Math.max(0, d0) / speed * 1000.0;
             laneTall[k] = !t.railsResume || (d1 - d0) > 0.9;
             // A real obstacle comes towards us at game speed; things fixed on screen
@@ -137,7 +181,7 @@ public final class SurferBrain {
                 double v = (prevD[k] - d0) / dt;
                 if (v > 0.35 * speed && v < 3 * speed + 2) {
                     approach[k]++;
-                    if (k == lane + 1 && approach[k] >= 3 && !t.blockedAtStart && d0 > 0.3 && d0 < 2.5
+                    if (k == 1 && approach[k] >= 3 && !t.blockedAtStart && d0 > 0.3 && d0 < 2.5
                             && v > 0.6 * speed && v < 1.6 * speed) { vSum += v; vN++; }
                 } else if (prevD[k] - d0 < -0.5) approach[k] = 0;   // jumped further away: new obstacle
                 else approach[k] = Math.max(0, approach[k] - 1);
@@ -145,40 +189,43 @@ public final class SurferBrain {
             prevD[k] = d0;
             laneConfirmed[k] = approach[k] >= 2;
         }
-        int own = lane + 1;
-        TrackVision.Track ownT = r.tracks.get(own);
         if (vN > 0) speed += 0.05 * (vSum / vN - speed);
         speed = Math.max(p.startSpeed * 0.8, Math.min(p.startSpeed * 2.5, speed));
+        TrackVision.Track ownT = r.tracks.get(1);
+
+        // which neighbours could we move into right now?
+        laneOk[1] = true;
+        laneOk[0] = leftExists && !r.tracks.get(0).sideBlocked && !r.tracks.get(0).blockedAtStart;
+        laneOk[2] = rightExists && !r.tracks.get(2).sideBlocked && !r.tracks.get(2).blockedAtStart;
 
         // ---- our own rails hidden right in front of us: standing on a train roof
         // (or already too late). Either way, don't swipe.
         boolean onRoof = ownT.blockedAtStart;
 
-        // coin value per lane, smoothed a little (coins flicker as they spin)
         for (int k = 0; k < 3; k++) laneReward[k] += 0.5 * (r.reward[k] - laneReward[k]);
 
-        double threat = laneTti[own];
+        double threat = laneTti[1];
         double react = p.reactMs + p.latencyMs;
         Move m = Move.NONE;
         String why;
-        if (onRoof) {
+        if (panning) {
+            why = "changing lane";
+        } else if (onRoof) {
             why = "on a train roof";
-        } else if (threat < react && laneConfirmed[own]) {
+        } else if (threat < react && laneConfirmed[1]) {
             // try a neighbouring lane; among safe ones prefer the one with more coins
             int bestDir = 0; double bestScore = -1;
-            for (int dir = -1; dir <= 1; dir += 2) {
-                int k = own + dir;
-                if (k < 0 || k > 2) continue;
-                if (r.tracks.get(k).blockedAtStart) continue;
+            for (int k = 0; k <= 2; k += 2) {
+                if (!laneOk[k]) continue;
                 if (laneTti[k] <= threat + p.safeExtraMs) continue;
                 double score = Math.min(laneTti[k], 5000) + (p.seekCoins ? laneReward[k] * 4 : 0);
-                if (score > bestScore) { bestScore = score; bestDir = dir; }
+                if (score > bestScore) { bestScore = score; bestDir = k - 1; }
             }
             if (bestDir != 0 && nowMs >= nextLaneOk) {
                 m = bestDir < 0 ? Move.LEFT : Move.RIGHT;
                 why = "dodge " + (bestDir < 0 ? "left" : "right");
             } else if (bestDir == 0 && nowMs >= nextAirOk) {
-                if (laneTall[own]) { m = Move.JUMP; why = "boxed in, jump"; }
+                if (laneTall[1]) { m = Move.JUMP; why = "boxed in, jump"; }
                 else { m = p.jumpLowObstacles ? Move.JUMP : Move.ROLL; why = "barrier: " + (m == Move.JUMP ? "jump" : "roll"); }
             } else why = "waiting";
         } else if (nowMs >= nextLaneOk && nowMs >= nextCoinOk && threat > react + p.safeExtraMs) {
@@ -186,40 +233,37 @@ public final class SurferBrain {
             int dir = 0;
             String reason = "";
             if (p.seekCoins) {
-                double ownV = laneReward[own], bestV = Math.max(p.coinMin, ownV * p.coinRatio);
-                for (int d = -1; d <= 1; d += 2) {
-                    int k = own + d;
-                    if (k < 0 || k > 2 || r.tracks.get(k).blockedAtStart) continue;
-                    if (laneTti[k] < react + 2 * p.safeExtraMs) continue;
-                    if (laneReward[k] > bestV) { bestV = laneReward[k]; dir = d; reason = "coins " + (d < 0 ? "left" : "right"); }
+                double bestV = Math.max(p.coinMin, laneReward[1] * p.coinRatio);
+                for (int k = 0; k <= 2; k += 2) {
+                    if (!laneOk[k] || laneTti[k] < react + 2 * p.safeExtraMs) continue;
+                    if (laneReward[k] > bestV) { bestV = laneReward[k]; dir = k - 1; reason = "coins " + (k == 0 ? "left" : "right"); }
                 }
             }
-            if (dir == 0 && p.preferMiddle && lane != 0 && laneReward[own] < p.coinMin
-                    && laneTti[1] > react + 2 * p.safeExtraMs && !r.tracks.get(1).blockedAtStart) {
-                dir = lane < 0 ? 1 : -1;
-                reason = "back to middle";
+            if (dir == 0 && p.preferMiddle && lane != 0 && laneReward[1] < p.coinMin && belief[lane + 1] > 0.85) {
+                int k = lane < 0 ? 2 : 0;           // towards the middle
+                if (laneOk[k] && laneTti[k] > react + 2 * p.safeExtraMs) { dir = k - 1; reason = "back to middle"; }
             }
             if (dir != 0) {
                 m = dir < 0 ? Move.LEFT : Move.RIGHT;
                 why = reason;
                 nextCoinOk = nowMs + 450;
-            } else why = laneReward[own] >= p.coinMin ? "collecting" : "clear";
+            } else why = laneReward[1] >= p.coinMin ? "collecting" : "clear";
         } else why = "clear";
 
         if (m == Move.LEFT || m == Move.RIGHT) {
             int dir = m == Move.LEFT ? -1 : 1;
             nextLaneOk = nowMs + p.laneCooldownMs;
-            pendingLaneMove = dir;
-            pendingUntil = nowMs + 600;
-            // trust our own move straight away; vision confirms or corrects it
-            lane = Math.max(-1, Math.min(1, lane + dir));
-            laneVotes = 0;
+            laneChangeUntil = nowMs + 280;
+            shiftBelief(dir);
+            // lanes are relative to us: after the move, forget per-lane tracking
+            for (int k = 0; k < 3; k++) { prevD[k] = Double.NaN; approach[k] = 0; laneReward[k] = 0; }
         } else if (m == Move.JUMP || m == Move.ROLL) {
             nextAirOk = nowMs + p.airCooldownMs;
         }
-        status = String.format("%s · lane %s · %s", why,
-                lane < 0 ? "L" : lane > 0 ? "R" : "M",
-                Double.isInfinite(threat) ? "clear ahead" : String.format("%.1fs ahead", threat / 1000));
+        int ln = lane();
+        status = String.format(java.util.Locale.US, "%s · lane %s%s · %s", why,
+                ln < 0 ? "L" : ln > 0 ? "R" : "M", belief[ln + 1] < 0.7 ? "?" : "",
+                Double.isInfinite(threat) ? "clear ahead" : String.format(java.util.Locale.US, "%.1fs ahead", threat / 1000));
         return m;
     }
 
@@ -228,16 +272,20 @@ public final class SurferBrain {
     /** One compact line describing this frame, for the on-phone log. */
     public String logLine(Move m) {
         TrackVision.Result r = last;
-        StringBuilder sb = new StringBuilder(160);
+        StringBuilder sb = new StringBuilder(200);
         if (r == null || !r.ok) {
             sb.append("-- ").append(r == null ? "" : r.why);
         } else {
-            sb.append(String.format(java.util.Locale.US, "vp=%.0f,%.0f P=%.0f lane=%d v=%.2f",
-                    r.vpX, r.vpY, vision.gridP, lastLane, speed));
+            sb.append(String.format(java.util.Locale.US, "vp=%.0f,%.0f P=%.0f c=%.0f v=%.2f bel=%.2f/%.2f/%.2f rails=%.0f/%.0f/%.0f/%.0f/%.0f",
+                    r.vpX, r.vpY, vision.gridP, vision.gridC, speed, belief[0], belief[1], belief[2],
+                    r.slotScore[0], r.slotScore[1], r.slotScore[2], r.slotScore[3], r.slotScore[4]));
+            sb.append(String.format(java.util.Locale.US, " own=%.2f", r.ownOffset));
             for (int k = 0; k < r.tracks.size() && k < 3; k++) {
                 TrackVision.Track t = r.tracks.get(k);
-                sb.append(String.format(java.util.Locale.US, " |%d y%d s%d%s%s%s tti=%s c=%.0f", k, t.obstacleY, t.obstacleSpan,
-                        t.blockedAtStart ? " AT" : "", laneConfirmed[k] ? " C" : "", laneTall[k] ? " T" : "",
+                sb.append(String.format(java.util.Locale.US, " |%s y%d s%d%s%s%s%s tti=%s c=%.0f",
+                        k == 0 ? "L" : k == 1 ? "O" : "R", t.obstacleY, t.obstacleSpan,
+                        t.blockedAtStart ? " AT" : "", k != 1 && t.sideBlocked ? " SIDE" : "",
+                        laneConfirmed[k] ? " C" : "", laneTall[k] ? " T" : "",
                         Double.isInfinite(laneTti[k]) ? "-" : String.valueOf((int) laneTti[k]), laneReward[k]));
             }
         }
