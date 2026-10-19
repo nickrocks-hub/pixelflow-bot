@@ -246,7 +246,7 @@ public class CoreTests {
                 "your Candy Crush profile gets the player and keeps your objective");
         check(ps.get("candy-crush") == null, "no duplicate Candy Crush profile");
         check(ps.get("dodge") == null && ps.get("nonogram-com") != null, "retired built-in game removed, Nonogram.com present");
-        check(ps.list().size() == 3 && "arrows".equals(Adapters.panelKey(ps.forPackage("com.oakever.arrows").adapterId)), "library: Nonogram.com + your Candy Crush + the arrows puzzle");
+        check(ps.list().size() == 4 && "flow".equals(Adapters.panelKey(ps.forPackage("com.bigduckgames.flow").adapterId)) && "arrows".equals(Adapters.panelKey(ps.forPackage("com.oakever.arrows").adapterId)), "library: Nonogram.com + your Candy Crush + the arrows puzzle + Flow Free");
         check("candy".equals(Adapters.panelKey(c.adapterId)) && "nonogram".equals(Adapters.panelKey("nonogram-com"))
                 && "none".equals(Adapters.panelKey(null)), "panel picks the right player");
         check(Adapters.forPackage("com.easybrain.nonogram") == Adapters.NONOGRAM_COM && Adapters.forPackage("x.y") == null, "players by package");

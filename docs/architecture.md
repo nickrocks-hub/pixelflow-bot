@@ -59,6 +59,20 @@ java -cp /tmp/ct NonoProbe tools/nono/samples/*.png  # screen reader on saved fr
 ```
 APK: GitHub Actions `build.yml` (workflow_dispatch on branch `nonogram-mode`).
 
+## v1.9 — Flow Free player (com.bigduckgames.flow)
+
+- `core/flow/FlowBoard`: grid lines as thin ridges (brighter than the pixels a few px either side, any line colour),
+  longest evenly spaced set per axis, plus a weaker border line one spacing beyond (edge-panel tabs, banners can hide
+  part of it). Dots: centre + 8 points at 0.22 cell all one bright colour (a pipe never covers all four sides);
+  paired by colour, exactly two each.
+- `core/flow/FlowSolver`: DFS on the most constrained pipe; prunes dead-end cells, pipes that can't reach their other
+  dot, and empty regions no pipe can fill; first pass forbids a pipe running alongside itself (half the time budget),
+  then a general pass.
+- `FlowMode`: read → solve → park the panel off the board → one drag per pipe through the cell centres → taught next level.
+- Verified (`tools/flow/FlowProbe`): 42 rendered boards 5×5–12×12 (up to 16 colours, blank and with pipes drawn) read
+  exactly and solved (slowest 8 ms); the user's 5×5 screenshot (top row redrawn where the panel covered it) reads and solves.
+  Not verified on the phone; bridges/hexes/warps not handled.
+
 ## v1.8 — arrows puzzle player (com.oakever.arrows, "Amaze Go!")
 
 The on-device AI understood the rules but couldn't trace 50+ tangled arrows, so this game got an exact player.

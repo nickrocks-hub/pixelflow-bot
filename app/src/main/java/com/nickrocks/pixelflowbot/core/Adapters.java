@@ -41,11 +41,19 @@ public final class Adapters {
             "Exact rule-based player, no AI model. Assumes the classic rules (an arrow leaves along its head's direction if nothing is in the way); "
                     + "pauses if a tapped arrow doesn't move. Read correctly on a level 7 screenshot (53 arrows); other layouts not seen yet.");
 
+    public static final Info FLOW = new Info("flow-free", "Flow Free reader + exact solver", "com.bigduckgames.flow",
+            GameProfile.Pace.TURN_BASED,
+            "Reads the grid (any size up to 20×20) and the coloured dots from the screen, solves the whole puzzle exactly (every pipe "
+                    + "connected, every cell filled), then draws each pipe in one drag; the next-level button you teach once.",
+            "Exact rule-based player, no AI model. Not for the bridge, hexagon or warp variants yet. Checked on a 5×5 screenshot and "
+                    + "on rendered boards up to 14×14.");
+
     public static List<Info> all() {
         List<Info> l = new ArrayList<>();
         l.add(NONOGRAM_COM);
         l.add(CANDY_CRUSH);
         l.add(ARROWS);
+        l.add(FLOW);
         return l;
     }
 
@@ -61,11 +69,12 @@ public final class Adapters {
         return null;
     }
 
-    /** Which floating-panel player runs this adapter: "nonogram", "candy", "arrows", or "none". */
+    /** Which floating-panel player runs this adapter: "nonogram", "candy", "arrows", "flow", or "none". */
     public static String panelKey(String adapterId) {
         if (NONOGRAM_COM.id.equals(adapterId)) return "nonogram";
         if (CANDY_CRUSH.id.equals(adapterId)) return "candy";
         if (ARROWS.id.equals(adapterId)) return "arrows";
+        if (FLOW.id.equals(adapterId)) return "flow";
         return "none";
     }
 
@@ -105,6 +114,16 @@ public final class Adapters {
         ar.pace = GameProfile.Pace.TURN_BASED;
         ar.notes = "Built from a level 7 screenshot; reads all 53 arrows and clears the level in simulation.";
         l.add(ar);
+        GameProfile fl = new GameProfile();
+        fl.id = "flow-free";
+        fl.name = "Flow Free";
+        fl.kind = GameProfile.Kind.EXTERNAL_APP;
+        fl.packageName = FLOW.packageName;
+        fl.adapterId = FLOW.id;
+        fl.support = GameProfile.Support.SUPPORTED;
+        fl.pace = GameProfile.Pace.TURN_BASED;
+        fl.notes = "Built from a 5×5 screenshot; solver checked on rendered boards up to 14×14.";
+        l.add(fl);
         return l;
     }
 }

@@ -50,6 +50,7 @@ public class TapService extends AccessibilityService {
     private NonogramMode nono;
     private CandyMode candy;
     private ArrowsMode arrows;
+    private FlowMode flow;
     private InstructionMode instr;
     private LinearLayout noneBox;
     private TextView noneText, brand;
@@ -148,6 +149,12 @@ public class TapService extends AccessibilityService {
             Log.e(TAG, "Arrows mode could not start", t);
         }
         try {
+            flow = new FlowMode(this);
+            panel.addView(flow.box());
+        } catch (Throwable t) {
+            Log.e(TAG, "Flow mode could not start", t);
+        }
+        try {
             instr = new InstructionMode(this);
             panel.addView(instr.box());
         } catch (Throwable t) {
@@ -204,13 +211,13 @@ public class TapService extends AccessibilityService {
 
     private void refreshNext() {
         if (nextToggle == null) return;
-        boolean playable = active.equals("nonogram") || active.equals("candy") || active.equals("arrows");
+        boolean playable = active.equals("nonogram") || active.equals("candy") || active.equals("arrows") || active.equals("flow");
         nextRow.setVisibility(playable ? View.VISIBLE : View.GONE);
         if (!playable) return;
         boolean on = next.enabled(active);
         nextToggle.setText(on ? "⟳ Next level: ON" : "⟳ Next level: off");
         Ui.tint(nextToggle, on ? Ui.ACCENT : Ui.MUTED, dp(14));
-        boolean taught = active.equals("candy") || active.equals("arrows");
+        boolean taught = active.equals("candy") || active.equals("arrows") || active.equals("flow");
         teachBtn.setVisibility(taught ? View.VISIBLE : View.GONE);
         forgetBtn.setVisibility(taught ? View.VISIBLE : View.GONE);
         int n = next.steps(active).size();
@@ -228,6 +235,7 @@ public class TapService extends AccessibilityService {
         if (nono != null) nono.box().setVisibility(key.equals("nonogram") ? View.VISIBLE : View.GONE);
         if (candy != null) candy.box().setVisibility(key.equals("candy") ? View.VISIBLE : View.GONE);
         if (arrows != null) arrows.box().setVisibility(key.equals("arrows") ? View.VISIBLE : View.GONE);
+        if (flow != null) flow.box().setVisibility(key.equals("flow") ? View.VISIBLE : View.GONE);
         boolean ai = key.equals("none") && instr != null;
         if (instr != null) {
             instr.box().setVisibility(ai ? View.VISIBLE : View.GONE);
@@ -242,7 +250,7 @@ public class TapService extends AccessibilityService {
 
     /** A game's player is mid-move: don't switch the panel under it. */
     private boolean busy() {
-        return (nono != null && nono.busy()) || (candy != null && candy.busy()) || (arrows != null && arrows.busy()) || (instr != null && instr.busy()) || (next != null && next.busy());
+        return (nono != null && nono.busy()) || (candy != null && candy.busy()) || (arrows != null && arrows.busy()) || (flow != null && flow.busy()) || (instr != null && instr.busy()) || (next != null && next.busy());
     }
 
     AutoNext autoNext() { return next; }
@@ -300,7 +308,7 @@ public class TapService extends AccessibilityService {
 
     String foregroundPackage() { return currentPackage(); }
 
-    String gameName(String g) { return "candy".equals(g) ? "Candy Crush" : "nonogram".equals(g) ? "Nonogram" : "arrows".equals(g) ? "the arrows game" : g; }
+    String gameName(String g) { return "candy".equals(g) ? "Candy Crush" : "nonogram".equals(g) ? "Nonogram" : "arrows".equals(g) ? "the arrows game" : "flow".equals(g) ? "Flow Free" : g; }
 
     void cancelNext() { if (next != null) next.cancel(); }
 
@@ -308,6 +316,7 @@ public class TapService extends AccessibilityService {
         refreshNext();
         if (active.equals("candy") && candy != null) candy.note(msg);
         else if (active.equals("arrows") && arrows != null) arrows.note(msg);
+        else if (active.equals("flow") && flow != null) flow.note(msg);
         else if (active.equals("nonogram") && nono != null) nono.note(msg);
         else if (active.equals("none") && instr != null) instr.note(msg);
         else toast(msg);
@@ -347,6 +356,7 @@ public class TapService extends AccessibilityService {
         if (nono != null) nono.shutdown();
         if (candy != null) candy.shutdown();
         if (arrows != null) arrows.shutdown();
+        if (flow != null) flow.shutdown();
         if (instr != null) instr.shutdown();
         stopped = true;
         handler.removeCallbacksAndMessages(null);
@@ -393,6 +403,7 @@ public class TapService extends AccessibilityService {
         if (nono != null) nono.shutdown();
         if (candy != null) candy.shutdown();
         if (arrows != null) arrows.shutdown();
+        if (flow != null) flow.shutdown();
         if (instr != null) instr.shutdown();
         if (next != null) next.shutdown();
         handler.removeCallbacksAndMessages(null);
