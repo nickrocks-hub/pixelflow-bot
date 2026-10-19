@@ -35,6 +35,10 @@ public final class BotState {
     public static final String K_MIDDLE = "prefer_middle";
     public static final String K_OFFSET = "runner_offset_pct";
     public static final String K_SWIPE_Y = "swipe_y_pct";
+    public static final String K_ONLY_GAME = "only_in_game";
+
+    /** Off = swipe whatever app is in front (for phones where detection gets it wrong). */
+    public static volatile boolean onlyInGame = true;
 
     public static SharedPreferences prefs(Context c) {
         return c.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
@@ -50,10 +54,12 @@ public final class BotState {
         out.jumpLowObstacles = p.getBoolean(K_JUMP_LOW, true);
         out.preferMiddle = p.getBoolean(K_MIDDLE, true);
         out.runnerOffsetPct = p.getInt(K_OFFSET, 0);
+        onlyInGame = p.getBoolean(K_ONLY_GAME, true);
     }
 
     /** Only swipe while the game itself is in front (never on the home screen, ads, other apps). */
     public static boolean gameInFront() {
+        if (!onlyInGame) return true;
         String fg = foregroundPackage;
         return fg == null || fg.isEmpty() || GAME_PACKAGE.equals(fg);
     }

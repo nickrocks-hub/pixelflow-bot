@@ -26,7 +26,7 @@ An Android app that plays **Subway Surfers** (`com.kiloo.subwaysurf`) by itself,
 4. Use the floating START/STOP button to pause and resume.
 
 Tuning sliders (reaction distance, phone delay, lane-change margin, runner position…) are on the app's main screen.
-Drag the floating panel by its ⠿ handle to move it.
+Drag the floating panel by its ✥ handle to move it.
 
 ## Logs
 

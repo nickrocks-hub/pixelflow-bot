@@ -55,15 +55,47 @@ public class SwipeService extends AccessibilityService {
         showOverlay();
     }
 
+    private final java.util.HashMap<String, Boolean> activityCache = new java.util.HashMap<>();
+    private java.util.Set<String> launchers;
+
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
         if (event == null || event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
-        CharSequence pkg = event.getPackageName();
+        CharSequence pkg = event.getPackageName(), cls = event.getClassName();
         if (pkg == null) return;
         String p = pkg.toString();
-        // our own overlay and the system UI (notification shade, etc.) don't count as "the app in front"
-        if (p.equals(getPackageName()) || p.equals("com.android.systemui")) return;
-        BotState.foregroundPackage = p;
+        if (p.equals(getPackageName())) return;                   // our own panel / toasts
+        // Only a real full app screen changes "the app in front". Pop-ups, game overlays,
+        // keyboards and toasts from other apps fire the same event but are not activities.
+        if (isHome(p) || (cls != null && isActivity(p, cls.toString()))) {
+            BotState.foregroundPackage = p;
+        }
+    }
+
+    private boolean isActivity(String pkg, String cls) {
+        String key = pkg + "/" + cls;
+        Boolean b = activityCache.get(key);
+        if (b == null) {
+            try {
+                getPackageManager().getActivityInfo(new android.content.ComponentName(pkg, cls), 0);
+                b = true;
+            } catch (Exception e) {
+                b = false;
+            }
+            activityCache.put(key, b);
+        }
+        return b;
+    }
+
+    private boolean isHome(String pkg) {
+        if (launchers == null) {
+            launchers = new java.util.HashSet<>();
+            Intent home = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME);
+            for (android.content.pm.ResolveInfo ri : getPackageManager().queryIntentActivities(home, 0)) {
+                if (ri.activityInfo != null) launchers.add(ri.activityInfo.packageName);
+            }
+        }
+        return launchers.contains(pkg);
     }
 
     @Override
@@ -155,34 +187,33 @@ public class SwipeService extends AccessibilityService {
         bg.setColor(0xCC10121A);
         bg.setCornerRadius(dp(14));
         panel.setBackground(bg);
-        panel.setPadding(dp(10), dp(6), dp(6), dp(6));
+        panel.setPadding(dp(6), dp(6), dp(10), dp(6));
 
-        // drag handle: hold and move to put the panel anywhere
-        TextView grip = new TextView(this);
-        grip.setText("⠿");
-        grip.setTextColor(0xFF8A90A6);
-        grip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
-        grip.setPadding(0, 0, dp(8), 0);
-        panel.addView(grip);
-
-        statusView = new TextView(this);
-        statusView.setTextColor(0xFFB8BCC8);
-        statusView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        statusView.setMaxWidth(dp(180));
-        statusView.setSingleLine(false);
-        statusView.setText("AI GAME SUBWAY SURFERS");
-        panel.addView(statusView);
-
+        // START/STOP first, so it can never be pushed off the screen edge
         toggleView = new TextView(this);
         toggleView.setTextColor(Color.WHITE);
         toggleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         toggleView.setPadding(dp(12), dp(6), dp(12), dp(6));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        lp.leftMargin = dp(8);
-        panel.addView(toggleView, lp);
+        panel.addView(toggleView);
         toggleView.setOnClickListener(v -> toggle());
         refreshToggle();
+
+        // drag handle: hold and move to put the panel anywhere
+        TextView grip = new TextView(this);
+        grip.setText("✥");
+        grip.setTextColor(0xFFB8BCC8);
+        grip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
+        grip.setPadding(dp(10), 0, dp(6), 0);
+        panel.addView(grip);
+
+        // fixed width so the panel doesn't grow and shrink with the text
+        statusView = new TextView(this);
+        statusView.setTextColor(0xFFB8BCC8);
+        statusView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        statusView.setMaxLines(2);
+        statusView.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        statusView.setText("AI GAME SUBWAY SURFERS");
+        panel.addView(statusView, new LinearLayout.LayoutParams(dp(150), LinearLayout.LayoutParams.WRAP_CONTENT));
 
         WindowManager.LayoutParams p = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.WRAP_CONTENT,
@@ -222,6 +253,9 @@ public class SwipeService extends AccessibilityService {
         };
         grip.setOnTouchListener(drag);
         statusView.setOnTouchListener(drag);
+        int[] sz = screenSize();
+        p.x = Math.max(0, Math.min(sz[0] - dp(260), p.x));
+        p.y = Math.max(0, Math.min(sz[1] - dp(60), p.y));
         try {
             wm.addView(panel, p);
         } catch (RuntimeException e) {

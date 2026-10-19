@@ -11,6 +11,11 @@
     <!-- so we can open Subway Surfers (Android 11+ package visibility) -->
     <queries>
         <package android:name="com.kiloo.subwaysurf" />
+        <!-- home screens, so leaving the game for the home screen pauses the bot -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.HOME" />
+        </intent>
     </queries>
 
     <application

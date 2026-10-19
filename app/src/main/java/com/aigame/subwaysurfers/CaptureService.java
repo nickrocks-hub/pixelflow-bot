@@ -183,7 +183,11 @@ public class CaptureService extends Service {
             brain.reset();
         }
         if (!BotState.gameInFront()) {
-            if (svc != null && now - lastStatusMs > 500) { lastStatusMs = now; svc.postStatus("Waiting for Subway Surfers…"); }
+            if (log != null && !BotState.foregroundPackage.equals(lastFg)) {
+                lastFg = BotState.foregroundPackage;
+                log.event(now, "not in game, in front: " + lastFg);
+            }
+            if (svc != null && now - lastStatusMs > 500) { lastStatusMs = now; svc.postStatus("Waiting for Subway Surfers (in front: " + BotState.foregroundPackage + ")"); }
             brain.reset();
             return;
         }
@@ -210,6 +214,7 @@ public class CaptureService extends Service {
     private boolean wasRunning, loggedSinceSave, endSaved;
     private long lastFrameMs, activeMs, frozenSince = -1, lostSince = -1;
     private int[] prevLuma;
+    private String lastFg = "";
 
     /** True when the picture hardly changed since the last frame (crashed, paused, menu). */
     private boolean updateFrozen(int[] p, int w, int h) {

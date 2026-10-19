@@ -115,12 +115,14 @@ public class MainActivity extends Activity {
         root.addView(slider(prefs, BotState.K_SWIPE_Y, "Swipe height on screen", 35, 80, 60, " %",
                 "Where on the screen the swipes start."));
 
+        root.addView(toggle(prefs, BotState.K_ONLY_GAME, "Only swipe while Subway Surfers is open", true));
+        root.addView(hint("Turn off if the panel keeps saying \"Waiting for Subway Surfers\" while you're playing."));
         root.addView(toggle(prefs, BotState.K_LOGS, "Save a log to Downloads after each run", true));
         root.addView(hint("Saved to Download/" + SessionLog.FOLDER + " as a .zip when a run ends and when you press STOP. "
                 + "It holds what the bot saw and did plus the last few seconds of the screen — upload it to Claude to tune the bot."));
 
         root.addView(header("Good to know"));
-        root.addView(body("• Drag the floating panel by its ⠿ handle to move it anywhere.\n"
+        root.addView(body("• Drag the floating panel by its ✥ handle to move it anywhere.\n"
                 + "• It reacts to obstacles in your lane: moves to a free side lane if there is one, "
                 + "otherwise jumps over short barriers and trains it can't get around.\n"
                 + "• When your lane is clear it moves over to lines of coins and power-ups if that lane is safe.\n"
