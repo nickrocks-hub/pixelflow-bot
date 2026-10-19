@@ -2,34 +2,30 @@ package com.nickrocks.pixelflowbot;
 
 import android.app.Activity;
 import android.content.Intent;
-import android.content.SharedPreferences;
-import android.graphics.Canvas;
 import android.graphics.Color;
-import android.graphics.Paint;
-import android.graphics.RectF;
 import android.graphics.drawable.GradientDrawable;
 import android.media.projection.MediaProjectionManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
-import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
-import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+/** AI MINECRAFT BOT home screen: the two permissions, then open Minecraft. */
 public class MainActivity extends Activity {
     private static final int REQ_CAPTURE = 1;
     private static final int REQ_NOTIF = 2;
+    private static final int GRASS = 0xFF5FA03B, DIRT = 0xFF8B5A2B;
 
     private TextView tapChip, capChip;
-    private LinearLayout libraryBox;
     private Button tapButton, capButton;
+    private boolean launchAfterCapture;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -40,10 +36,8 @@ public class MainActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(18), dp(20), dp(18), dp(28));
-
         root.addView(hero());
 
-        // Live status chips
         LinearLayout chips = new LinearLayout(this);
         chips.setPadding(0, dp(14), 0, dp(4));
         tapChip = chip();
@@ -52,20 +46,20 @@ public class MainActivity extends Activity {
         chips.addView(capChip);
         root.addView(chips);
 
-        root.addView(section("GAME LIBRARY"));
-        libraryBox = new LinearLayout(this);
-        libraryBox.setOrientation(LinearLayout.VERTICAL);
-        root.addView(libraryBox);
-        root.addView(action("＋  Add a game", Ui.MUTED, v -> AddGame.start(this)));
-        root.addView(action("🧠  On-device AI (for games without a player)", Ui.INFO, v -> startActivity(new Intent(this, ModelActivity.class))));
+        root.addView(section("SET UP ONCE"));
+        tapButton = action("Turn on the tap service", Ui.ACCENT, v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
+        root.addView(step("1", "Tap service", "Lets the bot touch the screen in Minecraft, only after you press ▶ Start. Find AI MINECRAFT BOT under Accessibility → Installed apps.", tapButton));
+        capButton = action("Start screen capture", Ui.INFO, v -> requestCapture(false));
+        root.addView(step("2", "Screen capture", "Lets the bot see the game. Choose \"Entire screen\". Needed again after every update or restart.", capButton));
 
-        root.addView(section("PERMISSIONS FOR GAMES ON YOUR SCREEN"));
-        tapButton = action("Turn on the tap service", Ui.ACCENT,
-                v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
-        root.addView(step("1", "Tap service", "Lets the bot tap and swipe for you, only after you press Solve/Start. Find AI Game Bot under Accessibility → Installed apps.", tapButton));
-        capButton = action("Start screen capture", Ui.INFO, v -> requestCapture());
-        root.addView(step("2", "Screen capture", "Lets the bot see the game. Choose \"Entire screen\" when asked. Needed again after every app update.", capButton));
-        root.addView(step("3", "Play", "Tap a game in the library and press ▶ Launch & play. The floating panel switches to that game. Built-in players: Nonogram.com, Candy Crush Saga, Flow Free, the arrows puzzle (Amaze Go!) and Minecraft (first minutes: wood → crafting table → wooden pickaxe). Any other game you add is played by the on-device AI from the instructions you write in its profile (import a model once; it runs on the phone, offline).", null));
+        root.addView(section("PLAY"));
+        Button play = action("▶  Open Minecraft", GRASS, v -> launch());
+        root.addView(step("3", "In Minecraft", "Survival world, landscape, normal touch controls (not split controls), auto-jump on. Stand near trees with "
+                + "empty hands and no menus open. On the floating panel pick 🕹 Joystick or ✚ D-pad to match your controls, press 🔍 Look to "
+                + "check what it sees, then ▶ Start.", play));
+        root.addView(step("✓", "What it does", "Finds a tree, walks to it and holds to mine about 4 logs, then crafts planks, a crafting table and sticks, "
+                + "places the table and makes a wooden pickaxe (plus an axe and sword if there's wood), and takes the pickaxe in hand. "
+                + "It stops if it takes damage, sees a screen it doesn't know, or you touch the screen.", null));
 
         Button stop = action("■  STOP everything", Ui.DANGER, v -> {
             CaptureService.stop(this);
@@ -75,7 +69,7 @@ public class MainActivity extends Activity {
         ((LinearLayout.LayoutParams) stop.getLayoutParams()).topMargin = dp(22);
         root.addView(stop);
 
-        TextView foot = text("Never taps ads, coins, boosters or purchases. ⏸ Pause holds, ■ STOP ends everything.\nLogs: Download/AIGameBot", 12, Ui.TEXT_FAINT);
+        TextView foot = text("Works offline. Logs: Download/AIGameBot · stop screenshots: Pictures/AIGameBot", 12, Ui.TEXT_FAINT);
         foot.setGravity(Gravity.CENTER);
         foot.setPadding(0, dp(16), 0, 0);
         root.addView(foot);
@@ -86,62 +80,27 @@ public class MainActivity extends Activity {
         sv.addView(root);
         setContentView(sv);
 
-        if (Build.VERSION.SDK_INT >= 33) {
-            requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, REQ_NOTIF);
-        }
+        if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, REQ_NOTIF);
     }
-
-    // ------------------------------------------------------------------ pieces
 
     private View hero() {
         LinearLayout h = new LinearLayout(this);
         h.setOrientation(LinearLayout.VERTICAL);
         h.setPadding(dp(20), dp(22), dp(20), dp(22));
-        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                new int[]{0xFF7C3AED, 0xFF2563EB, 0xFF0891B2});
+        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{GRASS, 0xFF3E7A25, DIRT});
         bg.setCornerRadius(dp(26));
         h.setBackground(bg);
         h.setElevation(dp(6));
-
-        LinearLayout top = new LinearLayout(this);
-        top.setGravity(Gravity.CENTER_VERTICAL);
-        top.addView(new PixelMark(), new LinearLayout.LayoutParams(dp(46), dp(46)));
-        LinearLayout titles = new LinearLayout(this);
-        titles.setOrientation(LinearLayout.VERTICAL);
-        titles.setPadding(dp(14), 0, 0, 0);
-        TextView t = text("AI GAME BOT", 28, Color.WHITE);
+        TextView t = text("AI MINECRAFT BOT", 28, Color.WHITE);
         t.setTypeface(Ui.BLACK);
-        titles.addView(t);
-        TextView v = text("v2.0 · plays the games you launch · offline", 12, 0xCCFFFFFF);
+        h.addView(t);
+        TextView v = text("v1.0 · first minutes of Survival · offline", 12, 0xDDFFFFFF);
         v.setTypeface(Ui.MONO);
-        titles.addView(v);
-        top.addView(titles);
-        h.addView(top);
-
-        TextView sub = text("Launch a game from your library and let the bot play it. Nonogram.com and Candy Crush have built-in players; any other game can be played by the on-device AI from your instructions. Nothing goes over the internet.", 14, 0xE6FFFFFF);
-        sub.setPadding(0, dp(14), 0, 0);
+        h.addView(v);
+        TextView sub = text("Plays Minecraft for you from the screen: wood → crafting table → wooden pickaxe.", 14, 0xEEFFFFFF);
+        sub.setPadding(0, dp(12), 0, 0);
         h.addView(sub);
         return h;
-    }
-
-    /** Little 3x3 nonogram-style logo drawn in code. */
-    private final class PixelMark extends View {
-        private final Paint on = new Paint(Paint.ANTI_ALIAS_FLAG), off = new Paint(Paint.ANTI_ALIAS_FLAG), bg = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final boolean[] cells = {true, false, true, true, true, false, false, true, true};
-        PixelMark() {
-            super(MainActivity.this);
-            on.setColor(Color.WHITE);
-            off.setColor(0x33FFFFFF);
-            bg.setColor(0x33000000);
-        }
-        @Override protected void onDraw(Canvas c) {
-            float w = getWidth(), pad = w * 0.12f, cell = (w - pad * 2) / 3f, gap = cell * 0.14f;
-            c.drawRoundRect(new RectF(0, 0, w, getHeight()), w * 0.26f, w * 0.26f, bg);
-            for (int i = 0; i < 9; i++) {
-                float x = pad + (i % 3) * cell, y = pad + (i / 3) * cell;
-                c.drawRoundRect(new RectF(x + gap, y + gap, x + cell - gap, y + cell - gap), cell * 0.22f, cell * 0.22f, cells[i] ? on : off);
-            }
-        }
     }
 
     private TextView chip() {
@@ -173,7 +132,7 @@ public class MainActivity extends Activity {
         return t;
     }
 
-    private LinearLayout card() {
+    private View step(String num, String title, String body, Button button) {
         LinearLayout c = new LinearLayout(this);
         c.setOrientation(LinearLayout.VERTICAL);
         c.setPadding(dp(16), dp(14), dp(16), dp(14));
@@ -181,17 +140,12 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.bottomMargin = dp(10);
         c.setLayoutParams(lp);
-        return c;
-    }
-
-    private View step(String num, String title, String body, Button button) {
-        LinearLayout c = card();
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
         TextView badge = text(num, 14, Color.WHITE);
         badge.setTypeface(Ui.BLACK);
         badge.setGravity(Gravity.CENTER);
-        badge.setBackground(Ui.pill(Ui.ACCENT, dp(14)));
+        badge.setBackground(Ui.pill(GRASS, dp(14)));
         row.addView(badge, new LinearLayout.LayoutParams(dp(28), dp(28)));
         TextView t = text(title, 16, Ui.TEXT);
         t.setTypeface(Ui.MEDIUM);
@@ -202,33 +156,6 @@ public class MainActivity extends Activity {
         b.setPadding(0, dp(8), 0, button != null ? dp(10) : 0);
         c.addView(b);
         if (button != null) c.addView(button);
-        return c;
-    }
-
-    private View game(int color, String name, String tag, String body) {
-        LinearLayout c = card();
-        c.setBackground(Ui.card(dp(18), dp(1), (color & 0x00FFFFFF) | 0x55000000));
-        LinearLayout row = new LinearLayout(this);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        View swatch = new View(this);
-        swatch.setBackground(Ui.pill(color, dp(6)));
-        row.addView(swatch, new LinearLayout.LayoutParams(dp(14), dp(14)));
-        TextView t = text(name, 17, Ui.TEXT);
-        t.setTypeface(Ui.BLACK);
-        t.setPadding(dp(10), 0, dp(8), 0);
-        row.addView(t);
-        if (tag != null) {
-            TextView badge = text(tag, 10, Color.WHITE);
-            badge.setTypeface(Ui.BLACK);
-            badge.setLetterSpacing(0.1f);
-            badge.setPadding(dp(8), dp(2), dp(8), dp(2));
-            badge.setBackground(Ui.pill(color, dp(10)));
-            row.addView(badge);
-        }
-        c.addView(row);
-        TextView b = text(body, 13, Ui.TEXT_DIM);
-        b.setPadding(0, dp(8), 0, 0);
-        c.addView(b);
         return c;
     }
 
@@ -256,24 +183,6 @@ public class MainActivity extends Activity {
         return t;
     }
 
-    private EditText numberField(String hint) {
-        EditText f = new EditText(this);
-        f.setHint(hint);
-        f.setHintTextColor(Ui.TEXT_FAINT);
-        f.setTextColor(Ui.TEXT);
-        f.setInputType(InputType.TYPE_CLASS_NUMBER);
-        f.setPadding(dp(14), dp(10), dp(14), dp(10));
-        GradientDrawable d = new GradientDrawable();
-        d.setColor(0xFF0D1229);
-        d.setCornerRadius(dp(12));
-        d.setStroke(dp(1), 0x33FFFFFF);
-        f.setBackground(d);
-        f.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        return f;
-    }
-
-    // ------------------------------------------------------------------ behaviour
-
     @Override
     protected void onResume() {
         super.onResume();
@@ -281,7 +190,6 @@ public class MainActivity extends Activity {
     }
 
     private void refresh() {
-        refreshLibrary();
         boolean tap = TapService.isRunning(), cap = CaptureService.isRunning();
         setChip(tapChip, "Taps", tap);
         setChip(capChip, "Capture", cap);
@@ -291,11 +199,29 @@ public class MainActivity extends Activity {
         capButton.setAlpha(cap ? 0.6f : 1f);
     }
 
-    private void requestCapture() {
-        if (CaptureService.isRunning()) {
-            Toast.makeText(this, "Capture already running", Toast.LENGTH_SHORT).show();
+    /** Checks both permissions, then opens Minecraft. */
+    private void launch() {
+        if (!TapService.isRunning()) {
+            Toast.makeText(this, "Turn on the tap service first: AI MINECRAFT BOT under Accessibility → Installed apps.", Toast.LENGTH_LONG).show();
+            startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
             return;
         }
+        if (!CaptureService.isRunning()) { requestCapture(true); return; }
+        openMinecraft();
+    }
+
+    private void openMinecraft() {
+        Intent i = getPackageManager().getLaunchIntentForPackage(MinecraftMode.MINECRAFT_PKG);
+        if (i == null) { Toast.makeText(this, "Minecraft isn't installed on this phone.", Toast.LENGTH_LONG).show(); return; }
+        startActivity(i);
+    }
+
+    private void requestCapture(boolean thenLaunch) {
+        if (CaptureService.isRunning()) {
+            if (thenLaunch) openMinecraft(); else Toast.makeText(this, "Capture already running", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        launchAfterCapture = thenLaunch;
         MediaProjectionManager mpm = (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
         startActivityForResult(mpm.createScreenCaptureIntent(), REQ_CAPTURE);
     }
@@ -314,20 +240,7 @@ public class MainActivity extends Activity {
                 .putExtra(CaptureService.EXTRA_DATA, data);
         startForegroundService(svc);
         capChip.postDelayed(this::refresh, 800);
-    }
-
-    /** One card per game profile, with its honest status. */
-    private void refreshLibrary() {
-        if (libraryBox == null) return;
-        libraryBox.removeAllViews();
-        for (com.nickrocks.pixelflowbot.core.GameProfile p : AgentPlatform.get(this).profiles.list()) {
-            int color = p.support == com.nickrocks.pixelflowbot.core.GameProfile.Support.SUPPORTED ? Ui.GAME_NONO : Ui.GAME_AMAZE;
-            String tag = p.kind == com.nickrocks.pixelflowbot.core.GameProfile.Kind.BUILT_IN ? "BUILT-IN"
-                    : p.support == com.nickrocks.pixelflowbot.core.GameProfile.Support.SUPPORTED ? "ADAPTER" : "CALIBRATING";
-            View card = game(color, p.name, tag, p.statusLine() + (p.notes.isEmpty() ? "" : "\n" + p.notes) + "\nProfile v" + p.version + " · tap for details");
-            card.setOnClickListener(v -> startActivity(new Intent(this, ProfileActivity.class).putExtra(ProfileActivity.EXTRA_ID, p.id)));
-            libraryBox.addView(card);
-        }
+        if (launchAfterCapture) capChip.postDelayed(this::openMinecraft, 900);
     }
 
     private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }

@@ -46,16 +46,16 @@ jobs:
           exit 1
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk PixelFlowBot-${{ github.run_number }}.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk AIMinecraftBot-${{ github.run_number }}.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: PixelFlowBot-${{ github.run_number }}
-          path: PixelFlowBot-${{ github.run_number }}.apk
+          name: AIMinecraftBot-${{ github.run_number }}
+          path: AIMinecraftBot-${{ github.run_number }}.apk
 
       # A release gives a direct .apk download link that works from a phone browser.
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
           name: Build ${{ github.run_number }}
-          files: PixelFlowBot-${{ github.run_number }}.apk
+          files: AIMinecraftBot-${{ github.run_number }}.apk

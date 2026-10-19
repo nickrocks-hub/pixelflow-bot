@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">AI GAME BOT</string>
-    <string name="accessibility_label">AI Game Bot taps</string>
-    <string name="accessibility_description">Lets AI Game Bot tap and swipe in the game you launched (Nonogram.com, Candy Crush Saga) after you press Start or Solve, and see which app is in front so it only plays while that game is open. It never taps ads, coins, boosters or purchases.</string>
+    <string name="app_name">AI MINECRAFT BOT</string>
+    <string name="accessibility_label">AI MINECRAFT BOT</string>
+    <string name="accessibility_description">Lets AI MINECRAFT BOT touch the screen in Minecraft after you press Start, and see which app is in front so it only plays while Minecraft is open. STOP turns it off.</string>
 </resources>

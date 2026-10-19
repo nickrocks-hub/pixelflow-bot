@@ -32,6 +32,7 @@ import java.util.concurrent.Executors;
  */
 final class MinecraftMode {
     static final String GAME = "minecraft";
+    static final String MINECRAFT_PKG = "com.mojang.minecraftpe";
     private static final long GAP_MS = 220;      // between touches in one step
 
     private final TapService svc;
@@ -170,7 +171,7 @@ final class MinecraftMode {
     private void loop() {
         if (!running || dead) return;
         String fg = svc.foregroundPackage();
-        String pkg = com.nickrocks.pixelflowbot.core.Adapters.MINECRAFT.packageName;
+        String pkg = MinecraftMode.MINECRAFT_PKG;
         if (fg != null && !fg.equals("?") && !fg.equals(pkg) && !fg.equals(svc.getPackageName())) { stop("Stopped: Minecraft isn't in front (" + fg + ")."); return; }
         grab(f -> {
             if (f.w < f.h) {
