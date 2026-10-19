@@ -64,7 +64,8 @@ final class MinecraftMode {
         box.addView(r1);
         LinearLayout r2 = new LinearLayout(svc);
         ctrlBtn = svc.button("", Ui.MUTED, v -> {
-            prefs.edit().putBoolean("mc_dpad", !prefs.getBoolean("mc_dpad", false)).apply();
+            String c = controlsSetting();
+            prefs.edit().putString("mc_controls", c.equals("auto") ? "joystick" : c.equals("joystick") ? "dpad" : "auto").apply();
             refresh();
         });
         setBtn = svc.button("", Ui.MUTED, v -> {
@@ -87,7 +88,7 @@ final class MinecraftMode {
         info.setPadding(svc.dp(4), svc.dp(4), 0, 0);
         box.addView(info);
         note("Minecraft: gathers logs, crafts a table and wooden tools. Stand near trees in Survival, close menus, then ▶ Start. "
-                + "Pick your touch layout below (joystick or D-pad).");
+                + "It works out joystick or D-pad by itself.");
         refresh();
     }
 
@@ -95,14 +96,17 @@ final class MinecraftMode {
     boolean busy() { return running; }
     void note(String s) { info.setText(s); }
 
-    private boolean dpad() { return prefs.getBoolean("mc_dpad", false); }
+    /** "auto" (read from the screen), "joystick" or "dpad". */
+    private String controlsSetting() { return prefs.getString("mc_controls", "auto"); }
+    private boolean dpad() { return brain != null && brain.controls == McBrain.Controls.DPAD; }
     private boolean pickaxeOnly() { return prefs.getBoolean("mc_pickaxe_only", false); }
 
     private void refresh() {
         startBtn.setText(running ? "▶ Playing" : "▶ Start");
         pauseBtn.setEnabled(running);
         pauseBtn.setAlpha(running ? 1f : 0.4f);
-        ctrlBtn.setText(dpad() ? "✚ D-pad" : "🕹 Joystick");
+        String c = controlsSetting();
+        ctrlBtn.setText(c.equals("auto") ? "🎮 Controls: auto" : c.equals("dpad") ? "✚ D-pad" : "🕹 Joystick");
         setBtn.setText(pickaxeOnly() ? "⛏ Pickaxe only" : "⛏🪓🗡 All tools");
         ctrlBtn.setEnabled(!running);
         setBtn.setEnabled(!running);
@@ -125,7 +129,7 @@ final class MinecraftMode {
                 McVision.Screen s = McVision.screen(f);
                 StringBuilder sb = new StringBuilder("Screen: " + s.name().toLowerCase(Locale.US));
                 if (s == McVision.Screen.WORLD) {
-                    sb.append(" · health ").append(McVision.health(f)).append("/20");
+                    sb.append(" · health ").append(McVision.health(f)).append("/20 · controls ").append(McVision.layout(f).name().toLowerCase(Locale.US));
                     List<McVision.Trunk> ts = McVision.trunks(f);
                     sb.append(ts.isEmpty() ? "\nNo tree trunk in view." : "\n" + ts.size() + " trunk(s); nearest " + ts.get(0));
                 } else if (s != McVision.Screen.OTHER) {
@@ -140,10 +144,10 @@ final class MinecraftMode {
     private void start() {
         if (running || !ready()) return;
         brain = new McBrain();
-        brain.controls = dpad() ? McBrain.Controls.DPAD : McBrain.Controls.JOYSTICK;
+        String c = controlsSetting();
+        brain.autoControls = c.equals("auto");
+        brain.controls = c.equals("dpad") ? McBrain.Controls.DPAD : McBrain.Controls.JOYSTICK;
         brain.fullSet = !pickaxeOnly();
-        float k = prefs.getFloat("mc_turn_k", Float.NaN);
-        if (!Float.isNaN(k)) brain.setTurn(k);
         rec = new Recorder(svc);
         rec.line("{\"t\":" + System.currentTimeMillis() + ",\"event\":\"start\",\"mode\":\"minecraft\",\"controls\":\"" + brain.controls + "\",\"fullSet\":" + brain.fullSet + "}");
         running = true;
@@ -193,11 +197,11 @@ final class MinecraftMode {
                 return;
             }
             if (rec != null) {
-                rec.line("{\"t\":" + System.currentTimeMillis() + ",\"step\":" + brain.steps() + ",\"phase\":\"" + brain.phase + "\",\"note\":" + Recorder.q(st.note)
+                rec.line("{\"t\":" + System.currentTimeMillis() + ",\"step\":" + brain.steps() + ",\"phase\":\"" + brain.phase + "\",\"seen\":" + Recorder.q(brain.seen) + ",\"note\":" + Recorder.q(st.note)
                         + ",\"acts\":" + Recorder.q(st.acts.toString()) + (st.stop != null ? ",\"stop\":" + Recorder.q(st.stop) : "") + "}");
             }
             if (st.stop != null && !st.success) CaptureService.saveFrame(f, true);
-            if (!Float.isNaN(brain.turnK)) prefs.edit().putFloat("mc_turn_k", brain.turnK).apply();
+            if (brain.steps() == 1 || brain.steps() % 15 == 0) CaptureService.saveFrame(f, true);   // for diagnosing a run
             final McBrain.Step step = st;
             handler.post(() -> {
                 if (!running) return;

@@ -43,6 +43,16 @@ public class McTests {
         int[] blank = new int[2520 * 1080];
         check(McVision.screen(new Frame(2520, 1080, blank)) == McVision.Screen.OTHER, "black screen is OTHER");
 
+        System.out.println("Touch controls");
+        Frame dp = MakeIcons.load(new File(dir, "user_dpad.jpg"));
+        check(McVision.screen(dp) == McVision.Screen.WORLD, "your D-pad screenshot is the world screen");
+        check(McVision.layout(dp) == McVision.Layout.DPAD, "your D-pad screenshot → D-pad");
+        for (String n : world) check(McVision.layout(f(n)) == McVision.Layout.JOYSTICK, n + " (recording) → joystick");
+        McBrain auto = new McBrain();
+        auto.setTurn(-0.8f);
+        auto.next(dp);
+        check(auto.controls == McBrain.Controls.DPAD, "planner switches itself to the D-pad");
+
         System.out.println("Crafting screen reader");
         McVision.Craft c = McVision.craft(f("080"));
         check(c.canMake("planks") == 16 && c.canMake("crafting_table") == 0 && "log".equals(c.hotbar[0].item), "080: 4 logs → planks ×16, table red, logs in slot 1");

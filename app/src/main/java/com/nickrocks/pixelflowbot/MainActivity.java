@@ -55,8 +55,8 @@ public class MainActivity extends Activity {
         root.addView(section("PLAY"));
         Button play = action("▶  Open Minecraft", GRASS, v -> launch());
         root.addView(step("3", "In Minecraft", "Survival world, landscape, normal touch controls (not split controls), auto-jump on. Stand near trees with "
-                + "empty hands and no menus open. On the floating panel pick 🕹 Joystick or ✚ D-pad to match your controls, press 🔍 Look to "
-                + "check what it sees, then ▶ Start.", play));
+                + "empty hands and no menus open. On the floating panel press 🔍 Look to check what it sees "
+                + "(it works out joystick or D-pad itself), then ▶ Start.", play));
         root.addView(step("✓", "What it does", "Finds a tree, walks to it and holds to mine about 4 logs, then crafts planks, a crafting table and sticks, "
                 + "places the table and makes a wooden pickaxe (plus an axe and sword if there's wood), and takes the pickaxe in hand. "
                 + "It stops if it takes damage, sees a screen it doesn't know, or you touch the screen.", null));
@@ -94,7 +94,7 @@ public class MainActivity extends Activity {
         TextView t = text("AI MINECRAFT BOT", 28, Color.WHITE);
         t.setTypeface(Ui.BLACK);
         h.addView(t);
-        TextView v = text("v1.0 · first minutes of Survival · offline", 12, 0xDDFFFFFF);
+        TextView v = text("v1.1 · first minutes of Survival · offline", 12, 0xDDFFFFFF);
         v.setTypeface(Ui.MONO);
         h.addView(v);
         TextView sub = text("Plays Minecraft for you from the screen: wood → crafting table → wooden pickaxe.", 14, 0xEEFFFFFF);

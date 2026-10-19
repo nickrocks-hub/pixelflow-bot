@@ -123,6 +123,42 @@ public final class McVision {
         return h;
     }
 
+    // ---------------------------------------------------------------- touch controls
+
+    public enum Layout { JOYSTICK, DPAD, UNKNOWN }
+
+    /**
+     * Which movement control is on screen: the D-pad's up and down buttons have dark side edges at
+     * x≈215 and x≈388; the joystick's base has them at x≈202 and x≈548. Measured on the user's own
+     * screenshot (D-pad) and recording (joystick).
+     */
+    public static Layout layout(Frame f) {
+        float dpad = (edges(f, new float[]{215, 388}, 905, 1050) + edges(f, new float[]{215, 388}, 570, 705)) / 2;
+        float joy = edges(f, new float[]{202, 548}, 440, 750);
+        if (dpad >= 0.6f && dpad > joy) return Layout.DPAD;
+        if (joy >= 0.45f && dpad < 0.35f) return Layout.JOYSTICK;
+        return Layout.UNKNOWN;
+    }
+
+    /** Share of rows with a vertical edge darker than both sides near each x. */
+    static float edges(Frame f, float[] xs, float y0, float y1) {
+        int n = 0, hit = 0;
+        for (float y = y0; y <= y1; y += 6) {
+            for (float x : xs) {
+                n++;
+                int m = 255;
+                for (float dx = -8; dx <= 8; dx += 2) m = Math.min(m, val(at(f, x + dx, y)));
+                float side = 0;
+                int k = 0;
+                for (float dx = 14; dx <= 24; dx += 2) { side += val(at(f, x - dx, y)) + val(at(f, x + dx, y)); k += 2; }
+                if (m < 0.72f * side / k) hit++;
+            }
+        }
+        return n == 0 ? 0 : hit / (float) n;
+    }
+
+    private static int val(int p) { return Math.max((p >> 16) & 255, Math.max((p >> 8) & 255, p & 255)); }
+
     // ---------------------------------------------------------------- tree trunks
 
     /** One trunk (connected bark-coloured region) in reference pixels. */

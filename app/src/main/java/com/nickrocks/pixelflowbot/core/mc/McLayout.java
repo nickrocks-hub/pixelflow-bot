@@ -39,8 +39,10 @@ public final class McLayout {
     public static final float[][] HUD_RECTS = {
             {0, 0, 2520, 64},          // hearts, hunger, top buttons
             {740, 930, 1790, 1080},    // hotbar
-            {150, 330, 640, 820},      // joystick / d-pad
+            {150, 330, 640, 820},      // joystick
+            {0, 540, 600, 1080},       // d-pad
             {1980, 330, 2440, 720},    // sprint, jump, sneak
+            {2150, 690, 2400, 930},    // jump (d-pad layout)
     };
 
     // ---------------------------------------------------------------- inventory / crafting screen

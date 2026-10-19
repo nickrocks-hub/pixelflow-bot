@@ -58,6 +58,10 @@ public final class McBrain {
     // ---------------------------------------------------------------- settings
 
     public Controls controls = Controls.JOYSTICK;
+    /** Detect the movement control from the screen (true) or keep {@link #controls} as set. */
+    public boolean autoControls = true;
+    /** What the last screen showed, for the log. */
+    public String seen = "";
     /** Also make an axe and a sword when there's wood for them. */
     public boolean fullSet = true;
     /** Hand-mining a log takes 3 s; hold a little longer. */
@@ -81,6 +85,8 @@ public final class McBrain {
     private int[] holdBefore;            // patch before the hold
     private int holdFails, searchTurns, searchTotal, walkStuck;
     private int[] viewBefore;            // whole-view thumbnail before a walk
+    private float[] searchProfile;       // view before a search turn
+    private int deadTurns;
     public int logsBroken;
     private int logsBrokenAtCheck, checks, lastLogsSeen = -1, checksWithoutGain;
     public int logsSeen;                 // logs in the inventory at the last check
@@ -108,8 +114,15 @@ public final class McBrain {
             return new Step().settle(900).say("Waiting for the game screen…");
         }
         otherScreens = 0;
+        seen = s.name().toLowerCase(Locale.US);
         if (s == McVision.Screen.WORLD) {
+            if (autoControls) {
+                McVision.Layout l = McVision.layout(f);
+                if (l == McVision.Layout.DPAD) controls = Controls.DPAD;
+                else if (l == McVision.Layout.JOYSTICK) controls = Controls.JOYSTICK;
+            }
             int h = McVision.health(f);
+            seen += " health " + h + " " + controls.name().toLowerCase(Locale.US);
             if (h > bestHealth) bestHealth = h;
             if (bestHealth > 0 && h <= bestHealth - 3) {
                 return stop(String.format(Locale.US, "Took damage (%d/20 health, was %d) — a mob or a fall? Stopped so you can take over.", h, bestHealth));
@@ -171,9 +184,8 @@ public final class McBrain {
         calibProfile = null;
         if (Float.isNaN(sh) || Math.abs(sh) < 20) {
             if (++calibTries >= 3) {
-                turnK = -1f;
-                phase = Phase.GATHER;
-                return new Step().settle(200).say("Couldn't measure the camera turn; guessing and correcting as I go.");
+                return stop("Swiping on the screen didn't turn the camera (3 tries). Check Minecraft's touch settings: classic touch "
+                        + "controls (not split controls), and that nothing covers the right half of the screen. Then press ▶ again.");
             }
             return new Step().settle(200).say("Camera turn not measured — trying again…");
         }
@@ -227,7 +239,17 @@ public final class McBrain {
             }
         }
 
+        // Did the last search turn actually turn the camera?
+        if (searchProfile != null) {
+            float sh = McVision.shift(searchProfile, McVision.columnProfile(f));
+            searchProfile = null;
+            if (!Float.isNaN(sh) && Math.abs(sh) < 25) {
+                if (++deadTurns >= 2) return stop("My swipes stopped turning the camera — is a menu or the chat open, or is the game paused? Press ▶ again when it's back.");
+            } else deadTurns = 0;
+        }
+
         List<McVision.Trunk> ts = McVision.trunks(f);
+        seen += ts.isEmpty() ? " · no trunk" : " · " + ts.size() + " trunk(s), best " + ts.get(0);
         if (ts.isEmpty()) {
             searchTurns++;
             if (++searchTotal > 48) return stop("No trees found after looking around for a long time. Walk to a forest and press ▶ again.");
@@ -236,6 +258,7 @@ public final class McBrain {
                 viewBefore = McVision.patch(f, McLayout.CX, McLayout.CY, 500);
                 return st.walk(2500).settle(400).say("No trees around here — walking on.");
             }
+            searchProfile = McVision.columnProfile(f);
             return turnBy(st, -630).settle(450).say("Looking around for a tree…");
         }
         searchTurns = 0;

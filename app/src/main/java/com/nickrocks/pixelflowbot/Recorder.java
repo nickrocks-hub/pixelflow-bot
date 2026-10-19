@@ -30,7 +30,7 @@ final class Recorder {
 
     Recorder(Context ctx) {
         this.ctx = ctx.getApplicationContext();
-        this.name = "aigamebot_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date()) + ".txt";
+        this.name = "aiminecraftbot_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date()) + ".txt";
     }
 
     String where() { return "Download/AIGameBot/" + name; }
