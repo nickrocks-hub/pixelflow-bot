@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AI GAME SUBWAY SURFERS</string>
+    <string name="accessibility_label">AI GAME SUBWAY SURFERS</string>
+    <string name="accessibility_description">Lets AI GAME SUBWAY SURFERS swipe the screen to play Subway Surfers (left, right, jump, roll). It only swipes after you press START on its floating button, only while Subway Surfers is the app in front, and it never taps buttons, ads or purchases. It does not read text from your apps.</string>
+</resources>
