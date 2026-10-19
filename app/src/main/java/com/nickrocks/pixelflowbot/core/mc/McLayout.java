@@ -43,6 +43,7 @@ public final class McLayout {
             {0, 540, 600, 1080},       // d-pad
             {1980, 330, 2440, 720},    // sprint, jump, sneak
             {2150, 690, 2400, 930},    // jump (d-pad layout)
+            {1560, 800, 2250, 1080},   // the held item / hand
     };
 
     // ---------------------------------------------------------------- inventory / crafting screen

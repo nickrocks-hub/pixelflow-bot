@@ -86,6 +86,7 @@ public final class McBrain {
     private int holdFails, searchTurns, searchTotal, walkStuck;
     private int[] viewBefore;            // whole-view thumbnail before a walk
     private float[] searchProfile;       // view before a search turn
+    private int noMove;
     private int deadTurns;
     public int logsBroken;
     private int logsBrokenAtCheck, checks, lastLogsSeen = -1, checksWithoutGain;
@@ -231,6 +232,9 @@ public final class McBrain {
         if (viewBefore != null) {
             float d = McVision.patchDiff(viewBefore, McVision.patch(f, McLayout.CX, McLayout.CY, 500));
             viewBefore = null;
+            if (d < 3) noMove++; else noMove = 0;
+            if (noMove >= 4) return stop("Walking doesn't move the character (4 tries, the view didn't change). Check that the "
+                    + (controls == Controls.DPAD ? "D-pad's ▲ button" : "joystick") + " is where it normally is and that nothing covers it, then press ▶ again.");
             if (d < 3 && ++walkStuck >= 2) {
                 walkStuck = 0;
                 Step st = turnBy(new Step(), 900);

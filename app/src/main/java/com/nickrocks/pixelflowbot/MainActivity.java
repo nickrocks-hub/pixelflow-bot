@@ -94,7 +94,7 @@ public class MainActivity extends Activity {
         TextView t = text("AI MINECRAFT BOT", 28, Color.WHITE);
         t.setTypeface(Ui.BLACK);
         h.addView(t);
-        TextView v = text("v1.1 · first minutes of Survival · offline", 12, 0xDDFFFFFF);
+        TextView v = text("v1.2 · first minutes of Survival · offline", 12, 0xDDFFFFFF);
         v.setTypeface(Ui.MONO);
         h.addView(v);
         TextView sub = text("Plays Minecraft for you from the screen: wood → crafting table → wooden pickaxe.", 14, 0xEEFFFFFF);

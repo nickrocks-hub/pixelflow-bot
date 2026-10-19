@@ -90,6 +90,16 @@ public class McTests {
         check(!tableTrunk, "123: the placed crafting table is not taken for a tree");
         check(McVision.trunks(f("120")).isEmpty(), "120: no trunk in view");
 
+        Frame bf = MakeIcons.load(new File(dir, "user_birch.jpg"));
+        List<McVision.Trunk> bt = McVision.trunks(bf);
+        int birches = 0;
+        for (McVision.Trunk t : bt) if (t.birch) birches++;
+        check(birches >= 3 && bt.get(0).birch, "your birch-forest screenshot: " + birches + " birch trunks, nearest " + (bt.isEmpty() ? "none" : bt.get(0)));
+        boolean falseBirch = false;
+        for (String n : world) for (McVision.Trunk t : McVision.trunks(f(n))) if (t.birch) falseBirch = true;
+        for (McVision.Trunk t : McVision.trunks(MakeIcons.load(new File(dir, "user_dpad.jpg")))) if (t.birch) falseBirch = true;
+        check(!falseBirch, "no birch seen in the jungle frames (sky, stone, the crafting table)");
+
         System.out.println("Camera turn measurement");
         Frame base = f("123");
         for (int sh : new int[]{160, -240}) {

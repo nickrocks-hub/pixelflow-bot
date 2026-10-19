@@ -167,10 +167,11 @@ public final class McVision {
         public float cx;                   // centre column
         public float width;                // median width of its rows
         public int cells;
+        public boolean birch;
         public float holdX, holdY;         // where to press to mine it
         public float score;
         @Override public String toString() {
-            return String.format(Locale.US, "trunk x%.0f w%.0f [%.0f..%.0f] hold %.0f,%.0f", cx, width, y0, y1, holdX, holdY);
+            return String.format(Locale.US, (birch ? "birch " : "") + "trunk x%.0f w%.0f [%.0f..%.0f] hold %.0f,%.0f", cx, width, y0, y1, holdX, holdY);
         }
     }
 
@@ -200,14 +201,32 @@ public final class McVision {
     }
 
     /** Bark mask on a 12-px grid (reference space). */
-    public static boolean[] barkGrid(Frame f) {
+    public static boolean[] barkGrid(Frame f) { return grid(f, false); }
+
+    /** Birch bark: pale grey with a slight blue cast (bluer at dusk), not green, not brown. */
+    public static boolean birch(int p) {
+        int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
+        int mx = Math.max(r, Math.max(g, b)), mn = Math.min(r, Math.min(g, b));
+        if (mx < 30 || mx > 240) return false;
+        float s = (mx - mn) / (float) mx;
+        if (s > 0.38f) return false;
+        int br = b - r, bg = b - g, gr = g - r;
+        return br >= -12 && br <= 32 && bg >= -10 && bg <= 22 && gr >= -8 && gr <= 14;
+    }
+
+    public static boolean[] birchGrid(Frame f) { return grid(f, true); }
+
+    static boolean[] grid(Frame f, boolean birchBark) {
         boolean[] g = new boolean[GW * GH];
         for (int gy = 0; gy < GH; gy++) {
             for (int gx = 0; gx < GW; gx++) {
                 float cx = gx * CELL + CELL / 2, cy = gy * CELL + CELL / 2;
                 if (hud(cx, cy)) continue;
                 int k = 0;
-                for (int oy = -1; oy <= 1; oy++) for (int ox = -1; ox <= 1; ox++) if (bark(at(f, cx + ox * 4, cy + oy * 4))) k++;
+                for (int oy = -1; oy <= 1; oy++) for (int ox = -1; ox <= 1; ox++) {
+                    int p = at(f, cx + ox * 4, cy + oy * 4);
+                    if (birchBark ? birch(p) : bark(p)) k++;
+                }
                 g[gy * GW + gx] = k >= 5;
             }
         }
@@ -229,7 +248,70 @@ public final class McVision {
         List<Trunk> ts = trunks(barkGrid(f));
         // a crafting table (wood sides, orange planks top) is not a tree
         ts.removeIf(t -> plankTop(f, t) > 0.22f);
+        // birch: pale bark with black streaks; sky, stone and clouds are pale too but have no streaks
+        List<Trunk> bs = trunks(birchGrid(f));
+        bs.removeIf(t -> { float st = streaks(f, t); return st < 0.025f || st > 0.4f
+                // trunks stand upright and reach down towards the ground; sky through the leaves is wide and stays at the top
+                || (t.y1 - t.y0) < 1.2f * t.width || t.y1 < 300
+                || contrast(f, t) < 1.3f || plankTop(f, t) > 0.22f; });
+        for (Trunk t : bs) t.birch = true;
+        ts.addAll(bs);
+        Collections.sort(ts, (a, b) -> Float.compare(b.score, a.score));
         return ts;
+    }
+
+    /** Brightness of a birch trunk's pale bark over the brightness just left and right of it (it's the palest thing around). */
+    static float contrast(Frame f, Trunk t) {
+        int[] in = new int[256], out = new int[256];
+        int ni = 0, no = 0;
+        float w = Math.max(36, (t.x1 - t.x0) * 0.4f);
+        for (float y = t.y0; y < t.y1; y += 6) {
+            for (float x = t.x0; x < t.x1; x += 6) {
+                if (hud(x, y)) continue;
+                int p = at(f, x, y);
+                if (birch(p)) { in[val(p)]++; ni++; }
+            }
+            for (float x = t.x0 - w; x < t.x0; x += 6) if (x >= 0 && !hud(x, y)) { out[val(at(f, x, y))]++; no++; }
+            for (float x = t.x1; x < t.x1 + w; x += 6) if (x < McLayout.REF_W && !hud(x, y)) { out[val(at(f, x, y))]++; no++; }
+        }
+        if (ni < 10 || no < 10) return 0;
+        return (medianOf(in, ni) + 1f) / (medianOf(out, no) + 1f);
+    }
+
+    private static int medianOf(int[] h, int n) {
+        int acc = 0;
+        for (int i = 0; i < 256; i++) { acc += h[i]; if (acc * 2 >= n) return i; }
+        return 255;
+    }
+
+    /** Share of very dark, colourless pixels (birch's black streaks) inside a trunk's box, relative to its bark. */
+    static float streaks(Frame f, Trunk t) {
+        int[] hist = new int[256];
+        int n = 0;
+        for (float y = t.y0; y < t.y1; y += 6) {
+            for (float x = t.x0; x < t.x1; x += 6) {
+                if (hud(x, y)) continue;
+                int p = at(f, x, y);
+                if (birch(p)) { hist[val(p)]++; n++; }
+            }
+        }
+        if (n < 20) return 0;
+        int acc = 0, med = 0;
+        for (int i = 0; i < 256; i++) { acc += hist[i]; if (acc * 2 >= n) { med = i; break; } }
+        int dark = 0, all = 0;
+        for (float y = t.y0; y < t.y1; y += 6) {
+            for (float x = t.x0; x < t.x1; x += 6) {
+                if (hud(x, y)) continue;
+                int p = at(f, x, y);
+                int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
+                int mx = Math.max(r, Math.max(g, b)), mn = Math.min(r, Math.min(g, b));
+                boolean inTrunk = birch(p);
+                boolean streak = mx < med * 0.55f && mx - mn < 18;
+                if (inTrunk || streak) all++;
+                if (streak) dark++;
+            }
+        }
+        return all == 0 ? 0 : dark / (float) all;
     }
 
     /** Planks colour (orange-tan, bright): the top of a crafting table, planks, a wooden floor. */

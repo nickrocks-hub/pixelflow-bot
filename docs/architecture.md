@@ -35,7 +35,7 @@ Verified (`tools/mc/McTests`, 57 checks on 20 frames of the recording): screen k
 (every recipe, counts, hotbar, output on 5 screens), trunks close/far/absent, table not a tree, turn measurement on
 shifted frames, and the planner walked through the recorded sequence to "Done: wooden pickaxe".
 Not verified: anything on the phone — gestures in Minecraft, joystick/D-pad walking, mining reach, picking up logs,
-placing the table. Other wood types: oak/spruce probably found, birch not.
+placing the table. Birch (v1.2): pale bluish-grey bark with black streaks, upright, brighter than its sides — checked on the user's dusk birch-forest screenshot. Oak/spruce probably found by the brown-bark rule.
 
 ```
 S=app/src/main/java/com/nickrocks/pixelflowbot
