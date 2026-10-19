@@ -237,6 +237,34 @@ public final class NonoVision {
         }
         if (vs.size() < 2) { lastNote = "no grid (no vertical border)"; return null; }
 
+        // Same for the top or bottom border (Challenge mode can draw it grey with a shadow): if the
+        // black vertical lines run well past the outermost black horizontal line, the board edge is
+        // where they end.
+        int up = gy0, down = gy1;
+        for (Line v : vs) {
+            if (v.a1 - v.a0 > w / 60) continue;
+            int y = gy0;
+            while (y - 1 > h * 0.05f && blackAcross(px, w, v.a0, v.a1, y - 1)) y--;
+            up = Math.min(up, y);
+            y = gy1;
+            while (y + 1 < h * 0.97f && blackAcross(px, w, v.a0, v.a1, y + 1)) y++;
+            down = Math.max(down, y);
+        }
+        if (gy0 - up > edgeGap * 2) {
+            Line l = new Line();
+            l.a0 = l.a1 = edgeRow(f, up, gx0, gx1);
+            l.from = gx0; l.to = gx1;
+            hs.add(0, l);
+            gy0 = l.a0;
+        }
+        if (down - gy1 > edgeGap * 2) {
+            Line l = new Line();
+            l.a0 = l.a1 = edgeRow(f, down, gx0, gx1);
+            l.from = gx0; l.to = gx1;
+            hs.add(l);
+            gy1 = l.a1;
+        }
+
         Grid g = new Grid();
         g.left = vs.get(0).a0; g.right = vs.get(vs.size() - 1).a1;
         g.top = gy0; g.bottom = gy1;
@@ -253,6 +281,24 @@ public final class NonoVision {
         if (g.cell < 12) { lastNote = "cells too small (" + g.cell + "px)"; return null; }
         lastNote = "grid " + g;
         return g;
+    }
+
+    /** Any black pixel in [x0, x1] on row y. */
+    private static boolean blackAcross(int[] px, int w, int x0, int x1, int y) {
+        for (int x = x0; x <= x1; x++) if (black(px[y * w + x])) return true;
+        return false;
+    }
+
+    /** The darkest row within a few pixels of y over [x0, x1] (a grey board edge). */
+    private static int edgeRow(Frame f, int y, int x0, int x1) {
+        int best = y;
+        long bestSum = Long.MAX_VALUE;
+        for (int yy = Math.max(0, y - 4); yy <= Math.min(f.h - 1, y + 4); yy++) {
+            long sum = 0;
+            for (int x = x0; x <= x1; x += 2) sum += lum(f.px[yy * f.w + x]);
+            if (sum < bestSum) { bestSum = sum; best = yy; }
+        }
+        return best;
     }
 
     /** The darkest column within a few pixels of x over [y0, y1] (a grey board edge). */
