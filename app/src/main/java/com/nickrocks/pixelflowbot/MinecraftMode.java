@@ -260,8 +260,21 @@ final class MinecraftMode {
 
     /** Walk forward: hold the D-pad's forward arrow, or push the joystick up and keep it there. */
     private void walk(long ms, float sx, float sy, Runnable next) {
-        if (dpad()) {
-            run(GameAction.longPress(McLayout.DPAD_UP_X * sx, McLayout.DPAD_UP_Y * sy, ms, "walk"), next);
+        McBrain.Walk how = brain == null ? McBrain.Walk.DPAD_HOLD : brain.walkMethod;
+        float ux = McLayout.DPAD_UP_X * sx, uy = McLayout.DPAD_UP_Y * sy;
+        if (how == McBrain.Walk.DPAD_HOLD) {
+            run(GameAction.longPress(ux, uy, ms, "walk"), next);
+            return;
+        }
+        if (how == McBrain.Walk.DPAD_WIGGLE) {
+            // stay on the ▲ button but keep the finger moving a few pixels, so the game gets a stream of touch moves
+            int n = (int) Math.max(4, ms / 60);
+            float[] path = new float[(n + 1) * 2];
+            for (int i = 0; i <= n; i++) {
+                path[2 * i] = ux + ((i % 2 == 0) ? -6 : 6) * sx;
+                path[2 * i + 1] = uy + ((i % 4 < 2) ? -4 : 4) * sy;
+            }
+            run(GameAction.drag(path, ms, "walk"), next);
             return;
         }
         float x = McLayout.JOY_X * sx, y0 = McLayout.JOY_Y * sy, y1 = (McLayout.JOY_Y - McLayout.JOY_REACH) * sy;

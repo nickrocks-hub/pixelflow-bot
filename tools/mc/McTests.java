@@ -53,6 +53,22 @@ public class McTests {
         auto.next(dp);
         check(auto.controls == McBrain.Controls.DPAD, "planner switches itself to the D-pad");
 
+        System.out.println("Walking self-test");
+        McBrain mt = new McBrain();
+        McBrain.Step w1 = mt.next(dp);
+        check(hasWalk(w1) && mt.walkMethod == McBrain.Walk.DPAD_HOLD, "D-pad screen: first tries holding ▲: " + w1);
+        McBrain.Step w2 = mt.next(dp);
+        check(hasWalk(w2) && mt.walkMethod == McBrain.Walk.DPAD_WIGGLE, "view unchanged → tries ▲ with small movements: " + w2);
+        McBrain.Step w3 = mt.next(MakeIcons.load(new File(dir, "user_birch.jpg")));
+        check(mt.phase == McBrain.Phase.CALIBRATE && mt.walkMethod == McBrain.Walk.DPAD_WIGGLE, "view changed → keeps that method: " + w3.note);
+        McBrain mt2 = new McBrain();
+        for (int i = 0; i < 3; i++) mt2.next(dp);
+        McBrain.Step tr = mt2.next(dp);
+        check(tr.acts.size() == 2 && tr.acts.get(0).kind == McBrain.Act.Kind.SWIPE, "nothing worked → turns away from a possible wall: " + tr.note);
+        McBrain.Step last = null;
+        for (int i = 0; i < 4; i++) last = mt2.next(dp);
+        check(last.stop != null, "still nothing → stops and says so");
+
         System.out.println("Crafting screen reader");
         McVision.Craft c = McVision.craft(f("080"));
         check(c.canMake("planks") == 16 && c.canMake("crafting_table") == 0 && "log".equals(c.hotbar[0].item), "080: 4 logs → planks ×16, table red, logs in slot 1");

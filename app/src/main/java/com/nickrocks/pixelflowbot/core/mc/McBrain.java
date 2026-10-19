@@ -21,7 +21,10 @@ public final class McBrain {
 
     public enum Controls { JOYSTICK, DPAD }
 
-    public enum Phase { CALIBRATE, GATHER, CHECK, CRAFT_INV, PLACE, CRAFT_TABLE, EQUIP, DONE }
+    /** How a walk is performed: hold the D-pad's ▲, hold it with small finger movements, or push the joystick up. */
+    public enum Walk { DPAD_HOLD, DPAD_WIGGLE, JOYSTICK }
+
+    public enum Phase { MOVETEST, CALIBRATE, GATHER, CHECK, CRAFT_INV, PLACE, CRAFT_TABLE, EQUIP, DONE }
 
     /** A touch action in reference coordinates (2520×1080). */
     public static final class Act {
@@ -71,7 +74,12 @@ public final class McBrain {
 
     // ---------------------------------------------------------------- state
 
-    public Phase phase = Phase.CALIBRATE;
+    public Phase phase = Phase.MOVETEST;
+    /** The walking method that moved the character in the start-up test. */
+    public Walk walkMethod = Walk.DPAD_HOLD;
+    private Walk[] walkTries;
+    private int walkTry, walkRound;
+    private int[] walkBefore;
     /** Picture shift per pixel of finger movement when swiping sideways (negative: drag right → view turns right). */
     public float turnK = Float.NaN;
     private float[] calibProfile;
@@ -131,6 +139,7 @@ public final class McBrain {
         }
         if (steps > 900) return stop("Stopped after 900 steps without finishing.");
         switch (phase) {
+            case MOVETEST: return moveTest(f, s);
             case CALIBRATE: return calibrate(f, s);
             case GATHER: return gather(f, s);
             case CHECK: return check(f, s);
@@ -173,6 +182,52 @@ public final class McBrain {
 
     /** Swipe so screen column x comes to the centre. */
     private Step turnTo(Step st, float x) { return turnBy(st, McLayout.CX - x); }
+
+    /**
+     * Before anything else: find a way of walking that actually moves the character. Walk forward
+     * 1.2 s with each method in turn and keep the first one after which the view changed.
+     */
+    private Step moveTest(Frame f, McVision.Screen s) {
+        if (s != McVision.Screen.WORLD) return closeScreen("Closing this screen to start in the world…");
+        if (walkTries == null) {
+            McVision.Layout l = McVision.layout(f);
+            walkTries = l == McVision.Layout.JOYSTICK ? new Walk[]{Walk.JOYSTICK, Walk.DPAD_HOLD, Walk.DPAD_WIGGLE}
+                    : new Walk[]{Walk.DPAD_HOLD, Walk.DPAD_WIGGLE, Walk.JOYSTICK};
+            seen += " · layout " + l.name().toLowerCase(Locale.US);
+        }
+        if (walkBefore != null) {
+            float d = McVision.patchDiff(walkBefore, McVision.patch(f, McLayout.CX, McLayout.CY, 500));
+            walkBefore = null;
+            seen += String.format(Locale.US, " · view change %.1f after %s", d, walkTries[walkTry]);
+            if (d > 6) {
+                walkMethod = walkTries[walkTry];
+                controls = walkMethod == Walk.JOYSTICK ? Controls.JOYSTICK : Controls.DPAD;
+                autoControls = false;
+                phase = Phase.CALIBRATE;
+                return new Step().settle(150).say("Walking works (" + name(walkMethod) + "). Now measuring the camera…");
+            }
+            walkTry++;
+        }
+        if (walkTry >= walkTries.length) {
+            if (walkRound == 0) {
+                walkRound = 1;
+                walkTry = 0;
+                Step st = new Step();
+                st.swipe(McLayout.LOOK_X - 350, McLayout.LOOK_Y, McLayout.LOOK_X + 350, McLayout.LOOK_Y, 380);
+                st.swipe(McLayout.LOOK_X - 350, McLayout.LOOK_Y, McLayout.LOOK_X + 350, McLayout.LOOK_Y, 380);
+                return st.settle(500).say("The view didn't change — maybe facing a wall. Turning and testing again…");
+            }
+            return stop("I couldn't make the character walk: neither holding the D-pad's ▲ nor pushing the joystick changed the view. "
+                    + "Send me the log and a screenshot of your controls.");
+        }
+        walkMethod = walkTries[walkTry];
+        walkBefore = McVision.patch(f, McLayout.CX, McLayout.CY, 500);
+        return new Step().walk(1200).settle(500).say("Testing walking: " + name(walkMethod) + "…");
+    }
+
+    private static String name(Walk w) {
+        return w == Walk.JOYSTICK ? "joystick" : w == Walk.DPAD_HOLD ? "D-pad ▲ hold" : "D-pad ▲ hold with small movements";
+    }
 
     private Step calibrate(Frame f, McVision.Screen s) {
         if (s != McVision.Screen.WORLD) return closeScreen("Closing this screen to start in the world…");
@@ -422,5 +477,5 @@ public final class McBrain {
     }
 
     /** Skip calibration (tests, or when the user already measured it). */
-    public void setTurn(float k) { turnK = k; if (phase == Phase.CALIBRATE) phase = Phase.GATHER; }
+    public void setTurn(float k) { turnK = k; if (phase == Phase.CALIBRATE || phase == Phase.MOVETEST) phase = Phase.GATHER; }
 }
