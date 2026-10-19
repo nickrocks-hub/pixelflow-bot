@@ -26,6 +26,7 @@ import android.os.SystemClock;
 import android.util.DisplayMetrics;
 import android.view.WindowManager;
 
+import com.aigame.subwaysurfers.core.Learner;
 import com.aigame.subwaysurfers.core.SurferBrain;
 
 import java.nio.ByteBuffer;
@@ -56,8 +57,21 @@ public class CaptureService extends Service {
     private byte[] row;
     private long lastStatusMs;
 
+    private Learner learner;
     private final SharedPreferences.OnSharedPreferenceChangeListener prefListener =
-            (p, key) -> BotState.applyTo(p, params);
+            (p, key) -> { if (!BotState.K_LEARN_STATE.equals(key)) applySettings(p); };
+
+    /** User settings first, then (if learning is on) what the bot has learned on top. */
+    private void applySettings(SharedPreferences p) {
+        BotState.applyTo(p, params);
+        if (learner != null && p.getBoolean(BotState.K_LEARN, true)) learner.applyTo(params);
+    }
+
+    private Learner freshLearner(SharedPreferences p) {
+        SurferBrain.Params base = new SurferBrain.Params();
+        BotState.applyTo(p, base);
+        return new Learner(base);
+    }
 
     @Override
     public IBinder onBind(Intent intent) { return null; }
@@ -90,7 +104,12 @@ public class CaptureService extends Service {
         if (projection == null) { stopSelf(); return START_NOT_STICKY; }
 
         SharedPreferences prefs = BotState.prefs(this);
-        BotState.applyTo(prefs, params);
+        {
+            SurferBrain.Params base = new SurferBrain.Params();
+            BotState.applyTo(prefs, base);
+            learner = Learner.load(prefs.getString(BotState.K_LEARN_STATE, null), base);
+        }
+        applySettings(prefs);
         prefs.registerOnSharedPreferenceChangeListener(prefListener);
         brain = new SurferBrain(params);
         if (prefs.getBoolean(BotState.K_LOGS, true)) {
@@ -195,11 +214,17 @@ public class CaptureService extends Service {
         SurferBrain.Move m = brain.onFrame(px, w, h, now);
         long took = SystemClock.uptimeMillis() - now;
         boolean frozen = updateFrozen(px, w, h);
+        if (BotState.learnerResetRequested) {
+            BotState.learnerResetRequested = false;
+            learner = freshLearner(BotState.prefs(this));
+            applySettings(BotState.prefs(this));
+            if (log != null) log.event(now, "LEARNING RESET");
+        }
         if (log != null) {
             log.frame(px, w, h, now, took + "ms" + (frozen ? " FZ " : " ") + brain.logLine(m));
             loggedSinceSave = true;
-            detectRunEnd(now, brain.last != null && brain.last.ok, frozen);
         }
+        detectRunEnd(now, brain.last != null && brain.last.ok, frozen);
         if (svc != null) {
             if (m != SurferBrain.Move.NONE) svc.perform(m);
             if (now - lastStatusMs > 150 || m != SurferBrain.Move.NONE) {
@@ -247,15 +272,37 @@ public class CaptureService extends Service {
         boolean ended = (frozenSince >= 0 && now - frozenSince > 1200) || (lostSince >= 0 && now - lostSince > 2500);
         if (ended && !endSaved && activeMs > 3000) {
             endSaved = true;
+            boolean crashed = frozenSince >= 0;          // frozen = crash / game-over screen
+            double runSec = activeMs / 1000.0;
             activeMs = 0;
-            log.event(now, "RUN END (" + (frozenSince >= 0 ? "screen froze" : "tracks lost") + ")");
-            log.save("crash");
-            loggedSinceSave = false;
+            if (log != null) log.event(now, "RUN END (" + (crashed ? "screen froze" : "tracks lost") + ")");
+            if (crashed) learnFromCrash(now, frozenSince - 700, runSec);   // the crash was a moment before the screen froze
+            if (log != null) {
+                log.save("crash");
+                loggedSinceSave = false;
+            }
             brain.reset();
         }
     }
 
+    private void learnFromCrash(long now, long crashMs, double runSec) {
+        SharedPreferences prefs = BotState.prefs(this);
+        if (learner == null || !prefs.getBoolean(BotState.K_LEARN, true)) return;
+        String lesson = learner.learn(brain.history(), crashMs, runSec);
+        prefs.edit().putString(BotState.K_LEARN_STATE, learner.serialize()).apply();
+        applySettings(prefs);
+        if (log != null) {
+            log.event(now, "LEARNED " + lesson);
+            log.setInfo(infoText(lastW, lastH));
+        }
+        SwipeService svc = SwipeService.instance;
+        if (svc != null) svc.flash("Learned: " + lesson);
+    }
+
+    private int lastW = 360, lastH = 840;
+
     private String infoText(int w, int h) {
+        lastW = w; lastH = h;
         StringBuilder sb = new StringBuilder();
         sb.append("app: AI GAME SUBWAY SURFERS ").append(BuildConfigCompat.version(this)).append('\n');
         sb.append("phone: ").append(Build.MANUFACTURER).append(' ').append(Build.MODEL)
@@ -266,6 +313,9 @@ public class CaptureService extends Service {
                 .append(" safeExtra=").append(q.safeExtraMs).append(" laneCooldown=").append(q.laneCooldownMs)
                 .append(" jumpLow=").append(q.jumpLowObstacles).append(" preferMiddle=").append(q.preferMiddle)
                 .append(" seekCoins=").append(q.seekCoins).append(" runnerOffset=").append(q.runnerOffsetPct).append('\n');
+        sb.append("jumpAt=").append(q.jumpAtMs).append(" targetClear=").append(q.targetClearMs)
+                .append(" tallDepth=").append(String.format(java.util.Locale.US, "%.2f", q.tallDepth)).append('\n');
+        if (learner != null) sb.append("learning:\n").append(learner.summary()).append('\n');
         sb.append("log line: time_ms analyse_ms [FZ=frozen] vp P lane(-1..1) speed | per lane k: y(obstacle row) s(span) AT C(confirmed) T(tall) tti(ms) c(coins) => move | status\n");
         return sb.toString();
     }

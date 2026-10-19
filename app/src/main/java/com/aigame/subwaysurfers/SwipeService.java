@@ -52,7 +52,13 @@ public class SwipeService extends AccessibilityService {
         super.onServiceConnected();
         instance = this;
         wm = (WindowManager) getSystemService(WINDOW_SERVICE);
-        showOverlay();
+        if (!BotState.prefs(this).getBoolean(BotState.K_OVERLAY_HIDDEN, false)) showOverlay();
+    }
+
+    /** Thread-safe: show or hide the floating panel (remembered across restarts). */
+    public void setOverlayVisible(boolean visible) {
+        BotState.prefs(this).edit().putBoolean(BotState.K_OVERLAY_HIDDEN, !visible).apply();
+        main.post(() -> { if (visible) showOverlay(); else removeOverlay(); });
     }
 
     private final java.util.HashMap<String, Boolean> activityCache = new java.util.HashMap<>();
@@ -210,7 +216,7 @@ public class SwipeService extends AccessibilityService {
         statusView = new TextView(this);
         statusView.setTextColor(0xFFB8BCC8);
         statusView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        statusView.setMaxLines(2);
+        statusView.setMaxLines(3);
         statusView.setEllipsize(android.text.TextUtils.TruncateAt.END);
         statusView.setText("AI GAME SUBWAY SURFERS");
         panel.addView(statusView, new LinearLayout.LayoutParams(dp(150), LinearLayout.LayoutParams.WRAP_CONTENT));
@@ -301,11 +307,19 @@ public class SwipeService extends AccessibilityService {
 
     /** Thread-safe short message on the panel, shown even while paused. */
     public void flash(String s) {
-        main.post(() -> { if (statusView != null) statusView.setText(s); });
+        main.post(() -> {
+            flashUntil = android.os.SystemClock.uptimeMillis() + 5000;   // keep it readable for a while
+            if (statusView != null) statusView.setText(s);
+        });
     }
+
+    private long flashUntil;
 
     /** Thread-safe status line. */
     public void postStatus(String s) {
-        main.post(() -> { if (statusView != null && BotState.running) statusView.setText(s); });
+        main.post(() -> {
+            if (android.os.SystemClock.uptimeMillis() < flashUntil) return;
+            if (statusView != null && BotState.running) statusView.setText(s);
+        });
     }
 }

@@ -28,6 +28,15 @@ An Android app that plays **Subway Surfers** (`com.kiloo.subwaysurf`) by itself,
 Tuning sliders (reaction distance, phone delay, lane-change margin, runner position…) are on the app's main screen.
 Drag the floating panel by its ✥ handle to move it.
 
+## Learning
+
+After every crash (`core/Learner`) the bot looks at its last ~1.5 s of decisions and blames one cause —
+changed lane into danger, jumped too early / too late, misread a train as a barrier, got boxed in, hesitated,
+or didn't react — then nudges the matching setting (reaction distance, jump timing, how clear a lane must be,
+train/barrier threshold) by a small bounded step. It remembers the settings of its longest run and returns to
+them if three runs in a row are much worse. State is saved on the phone; "Reset learning" in the app clears it.
+`java -cp out LearnerTest [log.zip crashMs]` checks the rules and replays a real crash.
+
 ## Logs
 
 After each run (crash / game over) and when you press STOP, the app saves

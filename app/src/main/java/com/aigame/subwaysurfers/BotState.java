@@ -36,6 +36,12 @@ public final class BotState {
     public static final String K_OFFSET = "runner_offset_pct";
     public static final String K_SWIPE_Y = "swipe_y_pct";
     public static final String K_ONLY_GAME = "only_in_game";
+    public static final String K_LEARN = "learn_from_crashes";
+    public static final String K_LEARN_STATE = "learner_state";
+    public static final String K_OVERLAY_HIDDEN = "overlay_hidden";
+
+    /** Settings screen asked to forget everything learned. */
+    public static volatile boolean learnerResetRequested = false;
 
     /** Off = swipe whatever app is in front (for phones where detection gets it wrong). */
     public static volatile boolean onlyInGame = true;

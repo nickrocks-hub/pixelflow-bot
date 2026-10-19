@@ -50,6 +50,10 @@ public final class SurferBrain {
         public double groundPitchRatio = 0.50;
         /** A lane we move into must be clear at least this long (ms). */
         public int targetClearMs = 900;
+        /** Jump (or roll) when a barrier is this close (ms), plus the phone delay. A jump lasts ~0.6 s. */
+        public int jumpAtMs = 300;
+        /** An obstacle whose blocked stretch is longer than this (depth units) is a train. */
+        public double tallDepth = 0.9;
     }
 
     public final Params p;
@@ -78,6 +82,26 @@ public final class SurferBrain {
     public final boolean[] laneOk = new boolean[3];
     public int lastLane;
 
+    // ---- decision history, so a crash can be traced back to what the bot did
+    public enum Event { DODGE, COIN_MOVE, MIDDLE_MOVE, JUMP_BARRIER, ROLL_BARRIER, JUMP_BOXED, WAIT_TRAIN }
+
+    /** One decision: when, what, and how far away (ms) the obstacle in our lane was. */
+    public static final class Record {
+        public final long t; public final Event e; public final double ownTti;
+        Record(long t, Event e, double ownTti) { this.t = t; this.e = e; this.ownTti = ownTti; }
+    }
+
+    private final java.util.ArrayDeque<Record> history = new java.util.ArrayDeque<>();
+    private long lastWaitRecord;
+
+    private void record(long t, Event e, double tti) {
+        history.addLast(new Record(t, e, tti));
+        while (history.size() > 80) history.removeFirst();
+    }
+
+    /** Decisions from the last few seconds (oldest first). */
+    public java.util.List<Record> history() { return new java.util.ArrayList<>(history); }
+
     public SurferBrain(Params p) { this.p = p; reset(); }
 
     public void reset() {
@@ -86,6 +110,7 @@ public final class SurferBrain {
         laneChangeUntil = 0;
         nextLaneOk = nextAirOk = nextCoinOk = 0;
         noTrackFrames = 0; prevFrameMs = 0;
+        history.clear();
         pitch = Double.NaN;
         vision.hintX = vision.hintY = Double.NaN;
         vision.pitchHint = Double.NaN;
@@ -182,7 +207,7 @@ public final class SurferBrain {
             double d0 = depth(t.obstacleY, feetY, r.vpY);
             double d1 = depth(t.obstacleY - t.obstacleSpan, feetY, r.vpY);
             laneTti[k] = Math.max(0, d0) / speed * 1000.0;
-            laneTall[k] = !t.railsResume || (d1 - d0) > 0.9;
+            laneTall[k] = !t.railsResume || (d1 - d0) > p.tallDepth;
             // A real obstacle comes towards us at game speed; things fixed on screen
             // (the runner, a train roof we stand on, sparkles) do not.
             if (!Double.isNaN(prevD[k]) && dt > 0) {
@@ -220,8 +245,9 @@ public final class SurferBrain {
             why = "changing lane";
         } else if (onRoof) {
             why = "on a train roof";
-        } else if (threat < react && laneConfirmed[1]) {
-            // A barrier: jump it (or roll). A train: move to a lane that is clear well ahead.
+        } else if (laneConfirmed[1] && (laneTall[1] ? threat < react : threat < react + 400)) {
+            // A barrier: jump it (or roll) when it's close. A train: move to a lane that is clear well ahead.
+            boolean train = laneTall[1];
             int bestDir = 0; double bestScore = -1;
             double need = Math.max(p.targetClearMs, threat + p.safeExtraMs);
             for (int k = 0; k <= 2; k += 2) {
@@ -230,17 +256,25 @@ public final class SurferBrain {
                 double score = Math.min(laneTti[k], 5000) + (p.seekCoins ? laneReward[k] * 2 : 0);
                 if (score > bestScore) { bestScore = score; bestDir = k - 1; }
             }
-            boolean train = laneTall[1];
-            if (!train && nowMs >= nextAirOk) {
-                m = p.jumpLowObstacles ? Move.JUMP : Move.ROLL;
-                why = "barrier: " + (m == Move.JUMP ? "jump" : "roll");
-            } else if (train && bestDir != 0 && nowMs >= nextLaneOk) {
+            double jumpAt = p.jumpAtMs + p.latencyMs;
+            if (!train) {
+                if (threat < jumpAt && nowMs >= nextAirOk) {
+                    m = p.jumpLowObstacles ? Move.JUMP : Move.ROLL;
+                    why = "barrier: " + (m == Move.JUMP ? "jump" : "roll");
+                    record(nowMs, m == Move.JUMP ? Event.JUMP_BARRIER : Event.ROLL_BARRIER, threat);
+                } else why = "barrier ahead";
+            } else if (bestDir != 0 && nowMs >= nextLaneOk) {
                 m = bestDir < 0 ? Move.LEFT : Move.RIGHT;
                 why = "train: dodge " + (bestDir < 0 ? "left" : "right");
-            } else if (train && bestDir == 0 && threat < react * 0.6 && nowMs >= nextAirOk) {
-                // nowhere to go: jump as late as possible (it may be a ramp, or we may land on it)
+                record(nowMs, Event.DODGE, threat);
+            } else if (bestDir == 0 && threat < jumpAt && nowMs >= nextAirOk) {
+                // nowhere to go: jump late (it may be a ramp, or we may land on it)
                 m = Move.JUMP; why = "boxed in, jump";
-            } else why = train ? "train ahead, waiting for a gap" : "waiting";
+                record(nowMs, Event.JUMP_BOXED, threat);
+            } else {
+                why = "train ahead, waiting for a gap";
+                if (nowMs - lastWaitRecord > 150) { lastWaitRecord = nowMs; record(nowMs, Event.WAIT_TRAIN, threat); }
+            }
         } else if (nowMs >= nextLaneOk && nowMs >= nextCoinOk && threat > react + p.safeExtraMs) {
             // free to roam: go for coins / power-ups, else drift back to the middle
             int dir = 0;
@@ -261,6 +295,7 @@ public final class SurferBrain {
                 m = dir < 0 ? Move.LEFT : Move.RIGHT;
                 why = reason;
                 nextCoinOk = nowMs + 450;
+                record(nowMs, reason.startsWith("coins") ? Event.COIN_MOVE : Event.MIDDLE_MOVE, threat);
             } else why = laneReward[1] >= p.coinMin ? "collecting" : "clear";
         } else why = "clear";
 

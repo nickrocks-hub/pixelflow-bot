@@ -30,7 +30,7 @@ public class MainActivity extends Activity {
     private static final int REQ_CAPTURE = 41;
     private static final int REQ_NOTIF = 42;
 
-    private TextView accessStatus;
+    private TextView accessStatus, learnView;
     private Button accessButton;
     private boolean startAfterPermission, askedStorage, askedNotif;
 
@@ -51,6 +51,17 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         refreshAccess();
+        refreshLearn();
+    }
+
+    private void refreshLearn() {
+        if (learnView == null) return;
+        SharedPreferences prefs = BotState.prefs(this);
+        String st = prefs.getString(BotState.K_LEARN_STATE, null);
+        if (st == null) { learnView.setText("Nothing learned yet — it starts learning from the first crash."); return; }
+        com.aigame.subwaysurfers.core.SurferBrain.Params base = new com.aigame.subwaysurfers.core.SurferBrain.Params();
+        BotState.applyTo(prefs, base);
+        learnView.setText(com.aigame.subwaysurfers.core.Learner.load(st, base).summary());
     }
 
     // ------------------------------------------------------------------ UI
@@ -93,6 +104,29 @@ public class MainActivity extends Activity {
         root.addView(button("Stop bot", v -> {
             BotState.running = false;
             startService(new Intent(this, CaptureService.class).setAction(CaptureService.ACTION_STOP));
+        }));
+        root.addView(button("Stop bot and hide the floating button", v -> {
+            BotState.running = false;
+            startService(new Intent(this, CaptureService.class).setAction(CaptureService.ACTION_STOP));
+            SwipeService svc = SwipeService.instance;
+            if (svc != null) svc.setOverlayVisible(false);
+            else BotState.prefs(this).edit().putBoolean(BotState.K_OVERLAY_HIDDEN, true).apply();
+            Toast.makeText(this, "Bot stopped. The floating button comes back when you press Start.", Toast.LENGTH_LONG).show();
+        }));
+
+        // learning
+        root.addView(header("Learning"));
+        root.addView(toggle(prefs, BotState.K_LEARN, "Get better after every crash", true));
+        root.addView(hint("After each crash the bot works out what went wrong (changed lane into danger, jumped too "
+                + "early or late, got boxed in, hesitated, didn't react) and adjusts itself. If changes make it "
+                + "worse, it goes back to the settings of its best run. The sliders below are where it starts from."));
+        learnView = body("");
+        root.addView(learnView);
+        root.addView(button("Reset learning", v -> {
+            prefs.edit().remove(BotState.K_LEARN_STATE).apply();
+            BotState.learnerResetRequested = true;
+            refreshLearn();
+            Toast.makeText(this, "Learning reset.", Toast.LENGTH_SHORT).show();
         }));
 
         // settings
@@ -233,6 +267,9 @@ public class MainActivity extends Activity {
     // --------------------------------------------------------------- start
 
     private void requestStart() {
+        SwipeService shown = SwipeService.instance;
+        if (shown != null) shown.setOverlayVisible(true);
+        else BotState.prefs(this).edit().putBoolean(BotState.K_OVERLAY_HIDDEN, false).apply();
         if (!accessibilityOn()) {
             Toast.makeText(this, "Turn on the AI GAME SUBWAY SURFERS accessibility service first.", Toast.LENGTH_LONG).show();
             startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
