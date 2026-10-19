@@ -28,6 +28,32 @@ An Android app that plays **Subway Surfers** (`com.kiloo.subwaysurf`) by itself,
 Tuning sliders (reaction distance, phone delay, lane-change margin, runner position…) are on the app's main screen.
 Drag the floating panel by its ✥ handle to move it.
 
+## Control loop (v1.6)
+
+`core/SurferBrain` keeps timestamped state and plans every frame:
+
+- **Game state** PLAYING / STOPPED / NO_TRACKS from the track area's frame-to-frame motion and track detection;
+  input only while playing, stops the moment the picture stops moving. The crash moment feeds the learner.
+- **Lane** L / M / R or transitioning. The camera settles in one of three places (middle track at -0.71 / 0 /
+  +0.71 lane widths from centre), so the grid fit is restricted to those (stable in busy scenes) and the winner
+  *is* the lane reading. Lane swipes are confirmed from fresh frames; if the camera stays put the swipe was
+  ignored or bounced, the state is corrected and the route replanned.
+- **Vertical** GROUNDED / JUMPING / ROLLING from delivered gestures; ROOF and FLYING (jetpack) from camera height.
+- **Obstacles** tracked with ids across frames; speed is a line fit over the last 8 sightings, so jitter isn't
+  mistaken for motion; oncoming trains (faster than the scenery) get their own time to impact.
+- **Timing**: frame age, perception, gesture delivery and lane-change times are measured; decisions from frames
+  older than 150 ms are dropped.
+- **Planning**: stay / one lane / two lanes / jump / roll; a target lane must be train-free for a while after
+  arrival, every lane on the way must have no train alongside or arriving; barriers are jumped once per id at a
+  calibrated lead; coins only when safe; commitment and hysteresis against oscillation.
+
+`SwipeService` is the single owner of input: a queue of at most two moves, minimum gap between strokes, stale
+moves dropped, straight single-axis strokes, and one reported result per move (delivered / cancelled / refused /
+dropped).
+
+`tools/ScenarioTest` feeds hand-made scenes to the planner: clear path, train ahead, low barrier, roll setting,
+blocked neighbour, boxed in, two-lane move, ignored swipe, stale frames, faster approach, game over.
+
 ## Learning
 
 After every crash (`core/Learner`) the bot looks at its last ~1.5 s of decisions and blames one cause —

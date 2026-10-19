@@ -112,6 +112,7 @@ public class CaptureService extends Service {
         applySettings(prefs);
         prefs.registerOnSharedPreferenceChangeListener(prefListener);
         brain = new SurferBrain(params);
+        SwipeService.listener = ack -> brain.onGesture(ack);
         if (prefs.getBoolean(BotState.K_LOGS, true)) {
             log = new SessionLog(this, (name, ok, err) -> main.post(() -> {
                 String msg = ok ? "Log saved to Downloads/" + SessionLog.FOLDER + "/" + name
@@ -164,6 +165,10 @@ public class CaptureService extends Service {
         Image img;
         try { img = r.acquireLatestImage(); } catch (RuntimeException e) { return; }
         if (img == null) return;
+        // When the frame was produced, on the same monotonic clock as uptimeMillis.
+        long nowNs = System.nanoTime(), tsNs = img.getTimestamp();
+        long ageMs = (nowNs - tsNs) / 1_000_000L;
+        long frameUptime = SystemClock.uptimeMillis() - (ageMs >= 0 && ageMs < 2000 ? ageMs : 0);
         int w, h;
         try {
             Image.Plane plane = img.getPlanes()[0];
@@ -211,9 +216,8 @@ public class CaptureService extends Service {
             brain.reset();
             return;
         }
-        SurferBrain.Move m = brain.onFrame(px, w, h, now);
+        SurferBrain.Move m = brain.onFrame(px, w, h, frameUptime, now);
         long took = SystemClock.uptimeMillis() - now;
-        boolean frozen = updateFrozen(px, w, h);
         if (BotState.learnerResetRequested) {
             BotState.learnerResetRequested = false;
             learner = freshLearner(BotState.prefs(this));
@@ -221,10 +225,25 @@ public class CaptureService extends Service {
             if (log != null) log.event(now, "LEARNING RESET");
         }
         if (log != null) {
-            log.frame(px, w, h, now, took + "ms" + (frozen ? " FZ " : " ") + brain.logLine(m));
+            log.frame(px, w, h, frameUptime, took + "ms " + brain.logLine(m));
             loggedSinceSave = true;
         }
-        detectRunEnd(now, brain.last != null && brain.last.ok, frozen);
+        // crash: the brain saw the picture stop moving after a stretch of play
+        long crash = brain.crashAt;
+        if (crash > 0) {
+            brain.crashAt = -1;
+            if (log != null) log.event(now, "RUN END (picture stopped at " + crash + ")");
+            learnFromCrash(now, crash - 150, brain.playedSec);
+            if (log != null) {
+                log.save("crash");
+                loggedSinceSave = false;
+            }
+        }
+        // back in the menus for a while: the next run starts fresh (middle lane)
+        if (brain.game == SurferBrain.Game.PLAYING) noTracksSince = -1;
+        else if (noTracksSince < 0) noTracksSince = now;
+        else if (now - noTracksSince > 2500 && brainWasPlaying) { brain.reset(); brainWasPlaying = false; }
+        if (brain.game == SurferBrain.Game.PLAYING) brainWasPlaying = true;
         if (svc != null) {
             if (m != SurferBrain.Move.NONE) svc.perform(m);
             if (now - lastStatusMs > 150 || m != SurferBrain.Move.NONE) {
@@ -237,53 +256,9 @@ public class CaptureService extends Service {
     // ------------------------------------------------------------ logging
 
     private SessionLog log;
-    private boolean wasRunning, loggedSinceSave, endSaved;
-    private long lastFrameMs, activeMs, frozenSince = -1, lostSince = -1;
-    private int[] prevLuma;
+    private boolean wasRunning, loggedSinceSave, brainWasPlaying;
+    private long noTracksSince = -1;
     private String lastFg = "";
-
-    /** True when the picture hardly changed since the last frame (crashed, paused, menu). */
-    private boolean updateFrozen(int[] p, int w, int h) {
-        int step = 8, n = 0;
-        int cols = w / step, rows = h / step;
-        if (prevLuma == null || prevLuma.length != cols * rows) { prevLuma = new int[cols * rows]; return false; }
-        long diff = 0;
-        for (int y = 0; y < rows; y++) {
-            for (int x = 0; x < cols; x++) {
-                int c = p[(y * step) * w + x * step];
-                int l = ((c >> 16) & 0xFF) + ((c >> 8) & 0xFF) + (c & 0xFF);
-                diff += Math.abs(l - prevLuma[n]);
-                prevLuma[n++] = l;
-            }
-        }
-        return diff / (double) n / 3.0 < 1.5;
-    }
-
-    /** A run has ended when, after playing a while, the screen freezes or the tracks vanish. */
-    private void detectRunEnd(long now, boolean tracked, boolean frozen) {
-        long dt = lastFrameMs == 0 ? 0 : Math.min(500, now - lastFrameMs);
-        lastFrameMs = now;
-        if (tracked && !frozen) {
-            activeMs += dt;
-            if (activeMs > 3000) endSaved = false;
-        }
-        frozenSince = frozen ? (frozenSince < 0 ? now : frozenSince) : -1;
-        lostSince = !tracked ? (lostSince < 0 ? now : lostSince) : -1;
-        boolean ended = (frozenSince >= 0 && now - frozenSince > 1200) || (lostSince >= 0 && now - lostSince > 2500);
-        if (ended && !endSaved && activeMs > 3000) {
-            endSaved = true;
-            boolean crashed = frozenSince >= 0;          // frozen = crash / game-over screen
-            double runSec = activeMs / 1000.0;
-            activeMs = 0;
-            if (log != null) log.event(now, "RUN END (" + (crashed ? "screen froze" : "tracks lost") + ")");
-            if (crashed) learnFromCrash(now, frozenSince - 700, runSec);   // the crash was a moment before the screen froze
-            if (log != null) {
-                log.save("crash");
-                loggedSinceSave = false;
-            }
-            brain.reset();
-        }
-    }
 
     private void learnFromCrash(long now, long crashMs, double runSec) {
         SharedPreferences prefs = BotState.prefs(this);
@@ -316,7 +291,7 @@ public class CaptureService extends Service {
         sb.append("jumpAt=").append(q.jumpAtMs).append(" targetClear=").append(q.targetClearMs)
                 .append(" tallDepth=").append(String.format(java.util.Locale.US, "%.2f", q.tallDepth)).append('\n');
         if (learner != null) sb.append("learning:\n").append(learner.summary()).append('\n');
-        sb.append("log line: time_ms analyse_ms [FZ=frozen] vp P lane(-1..1) speed | per lane k: y(obstacle row) s(span) AT C(confirmed) T(tall) tti(ms) c(coins) => move | status\n");
+        sb.append("log line (v1.6): capture_time_ms analyse_ms age=frame age perc=perception ms g=gesture delivery ms lc=lane change ms | game lane vertical speed | vp P cam mot side=train alongside L/M/R | tracked obstacles #id lane type d=depth v=approach speed e=fit error tti h=sightings C=confirmed | => move | reason ## notes (gesture results, lane checks)\n");
         return sb.toString();
     }
 
@@ -361,6 +336,7 @@ public class CaptureService extends Service {
             try { projection.stop(); } catch (RuntimeException ignored) { }
         }
         if (thread != null) thread.quitSafely();
+        SwipeService.listener = null;
         if (log != null) log.close(loggedSinceSave ? "capture-ended" : null);
         log = null;
         display = null; reader = null; projection = null; thread = null;

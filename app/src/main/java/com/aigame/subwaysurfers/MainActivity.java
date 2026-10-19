@@ -157,12 +157,14 @@ public class MainActivity extends Activity {
 
         root.addView(header("Good to know"));
         root.addView(body("• Drag the floating panel by its ✥ handle to move it anywhere.\n"
-                + "• Barriers in your lane: it jumps (or rolls, if you switch that). Trains: it moves to a "
-                + "side lane only if that lane is clear well ahead and there's no train right beside you.\n"
-                + "• When your lane is clear it moves over to lines of coins and power-ups if that lane is safe.\n"
-                + "• Standing on train roofs and flying with the jetpack, it stays still.\n"
-                + "• It only swipes while Subway Surfers is the app in front, and it never presses buttons, "
-                + "ads or purchases. Revive, hoverboards and menus are up to you."));
+                + "• It tracks every train and barrier it sees, with its own speed and time to impact, and "
+                + "plans over the next couple of seconds: move one or two lanes, jump, roll, or do nothing.\n"
+                + "• It only moves into a lane that is clear well ahead with no train alongside, and checks "
+                + "on the next frames that the move really happened; if not, it replans.\n"
+                + "• Barriers: it jumps (or rolls, if you switch that) at a measured moment, once per barrier.\n"
+                + "• It stops swiping the moment the picture stops moving (crash, pause, game over) and on menus, "
+                + "never presses buttons, ads or purchases, and stays still on jetpack flights.\n"
+                + "• Each log shows the phone's real delays (frame age, analysis, swipe delivery, lane change)."));
 
         setContentView(scroll);
     }

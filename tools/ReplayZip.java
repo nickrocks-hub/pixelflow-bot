@@ -20,6 +20,7 @@ public class ReplayZip {
             z.stream().filter(e -> e.getName().startsWith("frames/") && e.getName().endsWith(".jpg")).forEach(frames::add);
             frames.sort((x, y) -> x.getName().compareTo(y.getName()));
             SurferBrain brain = new SurferBrain(new SurferBrain.Params());
+            brain.simulateAckMs = 60;   // no phone: pretend each swipe is delivered after 60 ms
             for (ZipEntry e : frames) {
                 long t = Long.parseLong(e.getName().replaceAll("\\D", ""));
                 BufferedImage im = ImageIO.read(new ByteArrayInputStream(z.getInputStream(e).readAllBytes()));

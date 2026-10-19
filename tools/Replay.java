@@ -17,6 +17,7 @@ public class Replay {
         double fps = Double.parseDouble(a[3]);
         int every = a.length > 4 ? Integer.parseInt(a[4]) : 1;
         SurferBrain brain = new SurferBrain(new SurferBrain.Params());
+        brain.simulateAckMs = 60;   // no phone: pretend each swipe is delivered after 60 ms
         byte[] buf = new byte[w * h * 3];
         int[] px = new int[w * h];
         long total = 0, slow = 0; int n = 0, ok = 0;

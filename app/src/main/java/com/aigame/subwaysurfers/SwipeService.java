@@ -11,6 +11,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -38,8 +39,6 @@ public class SwipeService extends AccessibilityService {
     private static final long SWIPE_MS = 45;
 
     private final Handler main = new Handler(Looper.getMainLooper());
-    private boolean inFlight = false;
-    private SurferBrain.Move pending = null;
 
     // overlay
     private WindowManager wm;
@@ -123,17 +122,70 @@ public class SwipeService extends AccessibilityService {
 
     // ------------------------------------------------------------------ swipes
 
-    /** Thread-safe: perform one move as a swipe. */
+    // ---------------------------------------------------------------- swipes
+    //
+    // The single owner of all game input. Moves are queued (at most 2, oldest first,
+    // never silently replaced), sent one at a time with a minimum gap so the game sees
+    // distinct swipes, and every move gets exactly one result reported back to the brain:
+    // delivered (with timings), cancelled by the system, refused, or dropped as stale.
+
+    /** Receives the result of every requested move. */
+    public interface GestureListener { void onGesture(SurferBrain.GestureAck ack); }
+
+    public static volatile GestureListener listener;
+
+    private static final long MIN_GAP_MS = 90;       // between two strokes
+    private static final long STALE_MS = 250;        // a move waiting longer than this is dropped
+    private static final long TIMEOUT_MS = 600;      // no callback at all: report and move on
+
+    private static final class Req { final SurferBrain.Move m; final long requested; Req(SurferBrain.Move m, long t) { this.m = m; requested = t; } }
+
+    private final java.util.ArrayDeque<Req> queue = new java.util.ArrayDeque<>();
+    private Req current;
+    private long currentDispatched, lastDone;
+    private int seq;
+
+    private void report(Req r, long dispatched, long done, boolean ok, String note) {
+        GestureListener l = listener;
+        if (l != null) l.onGesture(new SurferBrain.GestureAck(r.m, r.requested, dispatched, done, ok, note));
+    }
+
+    /** Thread-safe: request one move. */
     public void perform(SurferBrain.Move m) {
         if (m == null || m == SurferBrain.Move.NONE) return;
+        final Req r = new Req(m, SystemClock.uptimeMillis());
         main.post(() -> {
-            if (!BotState.running || !BotState.gameInFront()) return;
-            if (inFlight) { pending = m; return; }
-            dispatch(m);
+            if (!BotState.running || !BotState.gameInFront()) {
+                report(r, 0, SystemClock.uptimeMillis(), false, "not sent: bot paused or game not in front");
+                return;
+            }
+            if (queue.size() >= 2) {
+                Req old = queue.pollFirst();
+                report(old, 0, SystemClock.uptimeMillis(), false, "dropped: queue full");
+            }
+            queue.addLast(r);
+            pump();
         });
     }
 
+    private void pump() {
+        if (current != null) return;
+        long now = SystemClock.uptimeMillis();
+        Req r;
+        while ((r = queue.peekFirst()) != null && now - r.requested > STALE_MS) {
+            queue.pollFirst();
+            report(r, 0, now, false, "dropped: waited " + (now - r.requested) + " ms (stale)");
+        }
+        if (r == null) return;
+        long wait = lastDone + MIN_GAP_MS - now;
+        if (wait > 0) { main.postDelayed(this::pump, wait); return; }
+        queue.pollFirst();
+        dispatch(r);
+    }
+
     private int[] screenSize() {
+        // Gestures use real screen coordinates (whole display, including system bars),
+        // the same space the game is drawn in when full screen.
         if (Build.VERSION.SDK_INT >= 30) {
             Rect b = wm.getMaximumWindowMetrics().getBounds();
             return new int[]{b.width(), b.height()};
@@ -143,14 +195,16 @@ public class SwipeService extends AccessibilityService {
         return new int[]{dm.widthPixels, dm.heightPixels};
     }
 
-    private void dispatch(SurferBrain.Move m) {
+    private void dispatch(Req r) {
         int[] sz = screenSize();
         int w = sz[0], h = sz[1];
+        // Straight, single-axis strokes through the middle of the play area (away from the
+        // HUD at the top and the power-up bar at the bottom), sized relative to the screen.
         float cx = w * 0.5f;
         float cy = h * BotState.prefs(this).getInt(BotState.K_SWIPE_Y, 60) / 100f;
         float dx = 0, dy = 0;
-        float lenX = w * 0.18f, lenY = h * 0.09f;
-        switch (m) {
+        float lenX = Math.min(w, h) * 0.20f, lenY = Math.min(w, h) * 0.20f;
+        switch (r.m) {
             case LEFT: dx = -lenX; break;
             case RIGHT: dx = lenX; break;
             case JUMP: dy = -lenY; break;
@@ -163,19 +217,29 @@ public class SwipeService extends AccessibilityService {
         GestureDescription g = new GestureDescription.Builder()
                 .addStroke(new GestureDescription.StrokeDescription(p, 0, SWIPE_MS))
                 .build();
-        inFlight = true;
-        boolean ok = dispatchGesture(g, new GestureResultCallback() {
-            @Override public void onCompleted(GestureDescription gd) { done(); }
-            @Override public void onCancelled(GestureDescription gd) { done(); }
-        }, main);
-        if (!ok) inFlight = false;
+        current = r;
+        currentDispatched = SystemClock.uptimeMillis();
+        final int mySeq = ++seq;
+        boolean ok;
+        try {
+            ok = dispatchGesture(g, new GestureResultCallback() {
+                @Override public void onCompleted(GestureDescription gd) { finish(mySeq, true, ""); }
+                @Override public void onCancelled(GestureDescription gd) { finish(mySeq, false, "cancelled by the system (screen touched?)"); }
+            }, main);
+        } catch (RuntimeException e) {
+            ok = false;
+        }
+        if (!ok) { finish(mySeq, false, "refused by Android"); return; }
+        main.postDelayed(() -> finish(mySeq, false, "no result within " + TIMEOUT_MS + " ms"), TIMEOUT_MS);
     }
 
-    private void done() {
-        inFlight = false;
-        SurferBrain.Move next = pending;
-        pending = null;
-        if (next != null && BotState.running && BotState.gameInFront()) dispatch(next);
+    private void finish(int s, boolean ok, String note) {
+        if (current == null || s != seq) return;              // already finished (callback vs timeout)
+        Req r = current;
+        current = null;
+        lastDone = SystemClock.uptimeMillis();
+        report(r, currentDispatched, lastDone, ok, note);
+        pump();
     }
 
     // ---------------------------------------------------------------- overlay

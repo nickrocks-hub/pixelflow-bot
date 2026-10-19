@@ -74,6 +74,8 @@ public final class TrackVision {
         public double vpX, vpY;
         public final List<Line> lines = new ArrayList<>();
         public final List<Track> tracks = new ArrayList<>();
+        /** Five tracks relative to the runner: two left .. two right ([2] = runner's). tracks = the middle three. */
+        public final List<Track> all = new ArrayList<>();
         public int ridgeCount;
         public double vpSharpness;
         /** Rail evidence for the fitted grid: [1..3] = its three tracks, [0]/[4] = a 4th track either side. */
@@ -97,8 +99,32 @@ public final class TrackVision {
 
     public boolean isRidge(int x, int y) { return ridge[y * w + x]; }
 
+    private int[] prevMotion = new int[0];
+    /** Mean change of the track area since the previous frame (0 = frozen picture). */
+    public double motion;
+
+    private void measureMotion(int[] px) {
+        int y0 = (int) (h * 0.42), y1 = (int) (h * 0.62), x0 = (int) (w * 0.1), x1 = (int) (w * 0.9);
+        int n = ((y1 - y0 + 2) / 3) * ((x1 - x0 + 2) / 3);
+        boolean fresh = prevMotion.length != n;
+        if (fresh) prevMotion = new int[n];
+        long sum = 0; int i = 0;
+        for (int y = y0; y < y1; y += 3) {
+            for (int x = x0; x < x1; x += 3) {
+                if (i >= n) break;
+                int c = px[y * w + x];
+                int l = (((c >> 16) & 0xFF) * 3 + ((c >> 8) & 0xFF) * 6 + (c & 0xFF)) / 10;
+                sum += Math.abs(l - prevMotion[i]);
+                prevMotion[i++] = l;
+            }
+        }
+        motion = fresh || i == 0 ? Double.NaN : sum / (double) i;
+    }
+
     public Result analyse(int[] px, int width, int height) {
         Result res = new Result();
+        w = width; h = height;
+        measureMotion(px);
         w = width; h = height;
         final double s = w / 360.0;
         if (ridge.length != w * h) { ridge = new boolean[w * h]; lum = new int[w * h]; }
@@ -151,12 +177,15 @@ public final class TrackVision {
             double c0 = res.tracks.get(0).centerAtFeet, c1 = res.tracks.get(1).centerAtFeet, c2 = res.tracks.get(2).centerAtFeet;
             res.ownOffset = (c1 - w * (0.5 + runnerOffset)) / ((c2 - c0) / 2);
         }
-        for (Track t : res.tracks) scanObstacle(t, yn, yf, s, res);
+        for (Track t : res.all) scanObstacle(t, yn, yf, s, res);
         if (res.tracks.size() == 3) {
             // the neighbour's rail nearest us must be visible level with the runner
-            for (int k = 0; k < 3; k++) checkSides(res.tracks.get(k), yn, yf, s);
-            res.tracks.get(0).sideBlocked = res.tracks.get(0).rightRailHidden;
-            res.tracks.get(2).sideBlocked = res.tracks.get(2).leftRailHidden;
+            for (Track t : res.all) checkSides(t, yn, yf, s);
+            // a lane is "blocked alongside" when its rail nearer the runner is hidden level with the runner
+            res.all.get(0).sideBlocked = res.all.get(0).rightRailHidden;
+            res.all.get(1).sideBlocked = res.all.get(1).rightRailHidden;
+            res.all.get(3).sideBlocked = res.all.get(3).leftRailHidden;
+            res.all.get(4).sideBlocked = res.all.get(4).leftRailHidden;
         }
         if (res.tracks.size() == 3) scanRewards(px, res, s);
         res.ok = true;
@@ -285,24 +314,41 @@ public final class TrackVision {
         }
         // Fit the three real tracks. There are only three, so rails where a 4th track
         // would be count against the fit: this stops the grid slipping one lane sideways.
-        // coarse pass, then a fine pass around the best coarse fit
+        // The camera settles in one of three places (one per lane): with the runner in the
+        // left / middle / right lane the middle track sits camOffset * spacing from the screen
+        // centre, camOffset = -0.71 / 0 / +0.71. Outside lane changes, only those three grid
+        // positions are allowed - this stops the fit slipping between lanes in busy scenes.
+        double feetY = h * runnerFeet;
+        double xc = w * (0.5 + runnerOffset);
+        double toNear = (yn - vy) / (feetY - vy);
+        bestCam = 99;
         for (int pass = 0; pass < 2; pass++) {
-            double pa, pb, pStep, ca, cb, cStep;
-            if (pass == 0) { pa = pMin; pb = pMax; pStep = 4 * s; ca = -0.5 * w; cb = 1.5 * w; cStep = 2; }
+            double pa, pb, pStep;
+            if (pass == 0) { pa = pMin; pb = pMax; pStep = 4 * s; }
             else {
                 if (bestScore <= 0) break;
                 pa = Math.max(pMin, bestP - 4 * s); pb = Math.min(pMax, bestP + 4 * s); pStep = 1;
-                ca = bestC - 3; cb = bestC + 3; cStep = 1;
             }
             for (double P = pa; P <= pb + 1e-9; P += pStep) {
+                double spFeet = P / toNear;
                 for (double gr = gaugeRatio - 0.03; gr <= gaugeRatio + 0.031; gr += 0.03) {
                     double g = gr * P;
-                    for (double c = ca; c <= cb + 1e-9; c += cStep) {
-                        double sc = 0;
-                        for (int k = -1; k <= 1; k++) sc += at(rt, c + k * P - g / 2, off) + at(rt, c + k * P + g / 2, off);
-                        sc -= outsidePenalty * (at(rt, c - 2 * P - g / 2, off) + at(rt, c - 2 * P + g / 2, off)
-                                + at(rt, c + 2 * P - g / 2, off) + at(rt, c + 2 * P + g / 2, off));
-                        if (sc > bestScore) { bestScore = sc; bestC = c; bestP = P; bestG = g; }
+                    if (freeFit) {
+                        double ca = pass == 0 ? -0.5 * w : bestC - 3, cb = pass == 0 ? 1.5 * w : bestC + 3;
+                        double cStep = pass == 0 ? 2 : 1;
+                        for (double c = ca; c <= cb + 1e-9; c += cStep) {
+                            double sc = gridScore(c, P, g, off);
+                            if (sc > bestScore) { bestScore = sc; bestC = c; bestP = P; bestG = g; bestCam = 99; }
+                        }
+                    } else {
+                        for (int ci = 0; ci < CAM.length; ci++) {
+                            double tolC = camTol * P;
+                            double mid = vx + ((xc - CAM[ci] * spFeet) - vx) * toNear;    // middle track at the near row
+                            for (double c = mid - tolC; c <= mid + tolC + 1e-9; c += 1) {
+                                double sc = gridScore(c, P, g, off);
+                                if (sc > bestScore) { bestScore = sc; bestC = c; bestP = P; bestG = g; bestCam = CAM[ci]; }
+                            }
+                        }
                     }
                 }
             }
@@ -325,6 +371,23 @@ public final class TrackVision {
                 res.lines.add(l);
             }
         }
+    }
+
+    /** Camera positions (middle track offset from centre, lane widths) for the left / middle / right lane. */
+    public static final double[] CAM = {-0.71, 0, 0.71};
+    /** How far (fraction of lane pitch) the fit may stray from those positions. */
+    public double camTol = 0.07;
+    /** True while the camera is panning after a lane change: fit anywhere. */
+    public boolean freeFit = false;
+    /** Which camera position won the fit (-0.71 / 0 / 0.71), 99 for a free fit. */
+    public double bestCam = 99;
+
+    private double gridScore(double c, double P, double g, int off) {
+        double sc = 0;
+        for (int k = -1; k <= 1; k++) sc += at(rt, c + k * P - g / 2, off) + at(rt, c + k * P + g / 2, off);
+        sc -= outsidePenalty * (at(rt, c - 2 * P - g / 2, off) + at(rt, c - 2 * P + g / 2, off)
+                + at(rt, c + 2 * P - g / 2, off) + at(rt, c + 2 * P + g / 2, off));
+        return sc;
     }
 
     private static double at(float[] a, double x, int off) {
@@ -356,7 +419,7 @@ public final class TrackVision {
             if (d < best) { best = d; own = cn; }
         }
         res.lines.clear();
-        for (int k = -1; k <= 1; k++) {
+        for (int k = -2; k <= 2; k++) {
             for (int side = -1; side <= 1; side += 2) {
                 Line l = new Line();
                 l.xn = own + k * gridP + side * g / 2;
@@ -373,8 +436,9 @@ public final class TrackVision {
             Track t = new Track();
             t.left = res.lines.get(i); t.right = res.lines.get(i + 1);
             t.centerAtFeet = (t.left.xAt(feet, yn, yf) + t.right.xAt(feet, yn, yf)) / 2;
-            res.tracks.add(t);
+            res.all.add(t);
         }
+        if (res.all.size() == 5) res.tracks.addAll(res.all.subList(1, 4));
     }
 
     // ---- coins and power-ups

@@ -17,6 +17,7 @@ import java.util.Locale;
  *   BOXED_IN     jumped at a train with nowhere to go   -> look further ahead, accept tighter gaps
  *   HESITATED    waited for a gap that never came       -> accept tighter gaps, react earlier
  *   UNSEEN       did nothing at all                     -> react earlier
+ *   INPUT        a swipe was not delivered / not taken  -> leave more time between swipes
  *
  * Each cause nudges one or two settings by a small, bounded step. It also keeps
  * the settings that survived longest; if the last few runs are all much worse
@@ -24,7 +25,17 @@ import java.util.Locale;
  */
 public final class Learner {
 
-    public enum Cause { LANE_CHANGE, JUMP_EARLY, JUMP_LATE, MISREAD, BOXED_IN, HESITATED, UNSEEN }
+    public enum Cause { LANE_CHANGE, JUMP_EARLY, JUMP_LATE, MISREAD, BOXED_IN, HESITATED, UNSEEN, INPUT }
+
+    /** Failure class of a cause: perception, planning, timing or input. */
+    public static String category(Cause c) {
+        switch (c) {
+            case JUMP_EARLY: case JUMP_LATE: return "timing";
+            case MISREAD: case UNSEEN: return "perception";
+            case INPUT: return "input";
+            default: return "planning";
+        }
+    }
 
     // learned settings
     public int reactMs, safeExtraMs, targetClearMs, jumpAtMs;
@@ -59,12 +70,14 @@ public final class Learner {
     /** Which cause best explains a crash at crashMs, given the decisions before it. */
     public static Cause blame(List<SurferBrain.Record> history, long crashMs) {
         SurferBrain.Record lastMove = null;
-        boolean waited = false;
+        boolean waited = false, inputFail = false;
         for (SurferBrain.Record r : history) {
             if (r.t > crashMs || r.t < crashMs - 1500) continue;
             if (r.e == SurferBrain.Event.WAIT_TRAIN) waited = true;
+            else if (r.e == SurferBrain.Event.LANE_FAILED || r.e == SurferBrain.Event.GESTURE_FAILED) inputFail = true;
             else lastMove = r;
         }
+        if (inputFail) return Cause.INPUT;
         if (lastMove != null) {
             long ago = crashMs - lastMove.t;
             switch (lastMove.e) {
@@ -128,6 +141,9 @@ public final class Learner {
                 reactMs = clamp(reactMs + 40, 400, 1300);
                 what = "waited too long → takes tighter gaps (" + targetClearMs + " ms)";
                 break;
+            case INPUT:
+                what = "a swipe didn't take effect (logged for checking)";
+                break;
             default:
                 reactMs = clamp(reactMs + 50, 400, 1300);
                 what = "didn't react → reacts earlier (" + reactMs + " ms)";
@@ -142,7 +158,7 @@ public final class Learner {
                 what += "; last runs were worse, back to the best settings";
             }
         }
-        lastLesson = String.format(Locale.US, "Run %d (%.0fs): %s", runs, runSec, what);
+        lastLesson = String.format(Locale.US, "Run %d (%.0fs, %s): %s", runs, runSec, category(c), what);
         return lastLesson;
     }
 
@@ -184,6 +200,7 @@ public final class Learner {
             case MISREAD: return "misread obstacle";
             case BOXED_IN: return "boxed in";
             case HESITATED: return "hesitated";
+            case INPUT: return "swipe not taken";
             default: return "didn't react";
         }
     }
@@ -191,7 +208,7 @@ public final class Learner {
     // ---- save / load as one line of text
     public String serialize() {
         StringBuilder sb = new StringBuilder();
-        sb.append(String.format(Locale.US, "v1;%d;%d;%d;%d;%.3f;%d;%d;%d;%d;%.3f;%.2f;%d;%d;%.2f;%.2f;%.2f",
+        sb.append(String.format(Locale.US, "v2;%d;%d;%d;%d;%.3f;%d;%d;%d;%d;%.3f;%.2f;%d;%d;%.2f;%.2f;%.2f",
                 reactMs, safeExtraMs, targetClearMs, jumpAtMs, tallDepth,
                 bReact, bSafe, bClear, bJump, bTall, bestRunSec, runs, recentN, recent[0], recent[1], recent[2]));
         for (int c : causeCount) sb.append(';').append(c);
@@ -202,7 +219,7 @@ public final class Learner {
     /** Load saved state, or start fresh from base if there is none / it's unreadable. */
     public static Learner load(String s, SurferBrain.Params base) {
         Learner l = new Learner(base);
-        if (s == null || !s.startsWith("v1;")) return l;
+        if (s == null || !s.startsWith("v2;")) return l;   // v1 = older timing meanings: start fresh
         try {
             String[] f = s.split(";", -1);
             int i = 1;
