@@ -99,26 +99,47 @@ public final class TrackVision {
 
     public boolean isRidge(int x, int y) { return ridge[y * w + x]; }
 
-    private int[] prevMotion = new int[0];
-    /** Mean change of the track area since the previous frame (0 = frozen picture). */
-    public double motion;
+    // ---- motion: change of the track area compared with a picture at least 60 ms older.
+    // (Comparing consecutive frames would depend on the frame rate: at 60 fps the change
+    // between two frames is a third of the change at 20 fps.)
+    private final int[][] snap = new int[4][];
+    private final long[] snapT = new long[4];
+    private int snapN;
+    /** Capture time of the frame being analysed (set by the caller; ms). */
+    public long frameTimeMs;
+    /** Mean change of the track area over >= 60 ms (0 = frozen picture, NaN = no reference yet). */
+    public double motion = Double.NaN;
 
     private void measureMotion(int[] px) {
         int y0 = (int) (h * 0.42), y1 = (int) (h * 0.62), x0 = (int) (w * 0.1), x1 = (int) (w * 0.9);
         int n = ((y1 - y0 + 2) / 3) * ((x1 - x0 + 2) / 3);
-        boolean fresh = prevMotion.length != n;
-        if (fresh) prevMotion = new int[n];
-        long sum = 0; int i = 0;
-        for (int y = y0; y < y1; y += 3) {
+        int[] cur = new int[n];
+        int i = 0;
+        for (int y = y0; y < y1; y += 3)
             for (int x = x0; x < x1; x += 3) {
                 if (i >= n) break;
                 int c = px[y * w + x];
-                int l = (((c >> 16) & 0xFF) * 3 + ((c >> 8) & 0xFF) * 6 + (c & 0xFF)) / 10;
-                sum += Math.abs(l - prevMotion[i]);
-                prevMotion[i++] = l;
+                cur[i++] = (((c >> 16) & 0xFF) * 3 + ((c >> 8) & 0xFF) * 6 + (c & 0xFF)) / 10;
             }
+        long t = frameTimeMs;
+        // newest snapshot that is at least 60 ms old
+        int ref = -1;
+        for (int k = 0; k < Math.min(snapN, snap.length); k++) {
+            long age = t - snapT[k];
+            if (age >= 60 && age < 400 && snap[k] != null && snap[k].length == i && (ref < 0 || snapT[k] > snapT[ref])) ref = k;
         }
-        motion = fresh || i == 0 ? Double.NaN : sum / (double) i;
+        if (ref >= 0) {
+            long sum = 0;
+            for (int k = 0; k < i; k++) sum += Math.abs(cur[k] - snap[ref][k]);
+            motion = sum / (double) Math.max(1, i);
+        } else motion = Double.NaN;
+        // keep a snapshot every ~30 ms
+        int newest = -1;
+        for (int k = 0; k < Math.min(snapN, snap.length); k++) if (newest < 0 || snapT[k] > snapT[newest]) newest = k;
+        if (newest < 0 || t - snapT[newest] >= 30 || t < snapT[newest]) {
+            int slot = snapN % snap.length;
+            snap[slot] = cur; snapT[slot] = t; snapN++;
+        }
     }
 
     public Result analyse(int[] px, int width, int height) {

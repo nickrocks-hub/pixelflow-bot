@@ -247,6 +247,7 @@ public final class SurferBrain {
 
         vision.runnerOffset = p.runnerOffsetPct / 100.0;
         vision.freeFit = transitioning && (transDone <= 0 || captureMs < transDone + 350);
+        vision.frameTimeMs = captureMs;
         TrackVision.Result r = vision.analyse(px, w, h);
         return step(r, h, captureMs, nowMs, t0);
     }
@@ -269,7 +270,7 @@ public final class SurferBrain {
         // ---------------- game state
         double motion = vision.motion;
         if (ok) lastTracked = captureMs;
-        boolean moving = !Double.isNaN(motion) && motion > 4.0;
+        boolean moving = Double.isNaN(motion) || motion > 4.0;      // NaN: no reference yet
         if (moving) stillSince = -1; else if (stillSince < 0) stillSince = captureMs;
         Game prev = game;
         if (stillSince >= 0 && captureMs - stillSince > 250) game = Game.STOPPED;

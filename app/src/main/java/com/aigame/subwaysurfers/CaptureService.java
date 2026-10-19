@@ -166,9 +166,13 @@ public class CaptureService extends Service {
         try { img = r.acquireLatestImage(); } catch (RuntimeException e) { return; }
         if (img == null) return;
         // When the frame was produced, on the same monotonic clock as uptimeMillis.
+        // Image timestamps may use a different clock base on some phones, so the age is taken
+        // relative to the smallest offset seen recently: that measures queueing delay reliably.
         long nowNs = System.nanoTime(), tsNs = img.getTimestamp();
-        long ageMs = (nowNs - tsNs) / 1_000_000L;
-        long frameUptime = SystemClock.uptimeMillis() - (ageMs >= 0 && ageMs < 2000 ? ageMs : 0);
+        double offMs = (nowNs - tsNs) / 1e6;
+        if (Double.isNaN(minOffMs) || offMs < minOffMs) minOffMs = offMs; else minOffMs += 0.02;   // slow drift up
+        long ageMs = (offMs >= 0 && offMs < 500) ? (long) offMs : (long) Math.max(0, offMs - minOffMs);
+        long frameUptime = SystemClock.uptimeMillis() - Math.min(ageMs, 1000);
         int w, h;
         try {
             Image.Plane plane = img.getPlanes()[0];
@@ -258,6 +262,7 @@ public class CaptureService extends Service {
     private SessionLog log;
     private boolean wasRunning, loggedSinceSave, brainWasPlaying;
     private long noTracksSince = -1;
+    private double minOffMs = Double.NaN;
     private String lastFg = "";
 
     private void learnFromCrash(long now, long crashMs, double runSec) {
