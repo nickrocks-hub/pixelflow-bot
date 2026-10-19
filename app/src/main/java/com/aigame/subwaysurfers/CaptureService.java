@@ -124,7 +124,14 @@ public class CaptureService extends Service {
         }
 
         projection.registerCallback(new MediaProjection.Callback() {
-            @Override public void onStop() { main.post(CaptureService.this::stopSelf); }
+            @Override public void onStop() {
+                // Android ended screen sharing (screen locked, sharing stopped from the status bar,
+                // display changed, ...). Say so instead of silently stopping.
+                if (log != null) log.event(SystemClock.uptimeMillis(), "SCREEN SHARING ENDED by Android");
+                SwipeService svc = SwipeService.instance;
+                if (svc != null) svc.flash("Screen sharing ended by Android — press START and tap Start to share again");
+                main.post(CaptureService.this::stopSelf);
+            }
         }, main);
         startCapture();
 

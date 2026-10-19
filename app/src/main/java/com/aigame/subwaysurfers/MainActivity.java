@@ -97,7 +97,7 @@ public class MainActivity extends Activity {
 
         // step 2
         root.addView(header("2. Start"));
-        root.addView(body("You'll be asked to share your screen — choose the entire screen. "
+        root.addView(body("Android will ask to share your screen: tap Start (if it offers \"one app\" or \"entire screen\", choose entire screen). "
                 + "Subway Surfers then opens with a floating START/STOP button. Start a run in the game "
                 + "(the bot doesn't press menu buttons), and the bot takes over the swiping."));
         root.addView(button("Start bot and open Subway Surfers", v -> requestStart()));
@@ -300,8 +300,22 @@ public class MainActivity extends Activity {
             openGame();
             return;
         }
+        startActivityForResult(captureIntent(), REQ_CAPTURE);
+    }
+
+    /**
+     * Android 14+ defaults to "Share one app" and then shows an app list, which is easy to get
+     * stuck in. The bot needs the whole screen, so ask for exactly that: the dialog then only
+     * offers "Start" for the entire screen.
+     */
+    private Intent captureIntent() {
         MediaProjectionManager mpm = (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
-        startActivityForResult(mpm.createScreenCaptureIntent(), REQ_CAPTURE);
+        if (Build.VERSION.SDK_INT >= 34) {
+            try {
+                return mpm.createScreenCaptureIntent(android.media.projection.MediaProjectionConfig.createConfigForDefaultDisplay());
+            } catch (RuntimeException ignored) { }
+        }
+        return mpm.createScreenCaptureIntent();
     }
 
     @Override

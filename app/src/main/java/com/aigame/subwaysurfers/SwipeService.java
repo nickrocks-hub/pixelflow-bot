@@ -365,14 +365,15 @@ public class SwipeService extends AccessibilityService {
             b.setCornerRadius(dp(10));
             b.setColor(on ? 0xFFD64545 : 0xFF2E9E5B);
             toggleView.setBackground(b);
-            if (!on && statusView != null) statusView.setText(BotState.captureActive ? "Paused" : "AI GAME SUBWAY SURFERS");
+            if (!on && statusView != null && android.os.SystemClock.uptimeMillis() >= flashUntil)
+                statusView.setText(BotState.captureActive ? "Paused" : "AI GAME SUBWAY SURFERS");
         });
     }
 
     /** Thread-safe short message on the panel, shown even while paused. */
     public void flash(String s) {
         main.post(() -> {
-            flashUntil = android.os.SystemClock.uptimeMillis() + 5000;   // keep it readable for a while
+            flashUntil = android.os.SystemClock.uptimeMillis() + 8000;   // keep it readable for a while
             if (statusView != null) statusView.setText(s);
         });
     }
