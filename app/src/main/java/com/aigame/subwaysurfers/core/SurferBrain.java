@@ -446,6 +446,27 @@ public final class SurferBrain {
         return b;
     }
 
+    /**
+     * For moving INTO or THROUGH a lane: every train seen there counts, confirmed or not
+     * (a train we run alongside sits still on screen and is never "confirmed approaching").
+     * Unknown speed = assume it comes at least as fast as the scenery.
+     */
+    private double anyTrainTti(int a) {
+        double b = Double.POSITIVE_INFINITY;
+        for (Obstacle o : obstacles) if (o.lane == a && o.train) b = Math.min(b, Math.max(0, o.d) / Math.max(o.v, worldSpeed) * 1000.0);
+        return b;
+    }
+
+    /** Something (train or barrier, confirmed or not) right next to us in that lane. */
+    private String nearThing(int a) {
+        for (Obstacle o : obstacles) {
+            if (o.lane != a) continue;
+            if (o.train && o.d < 1.3) return String.format(Locale.US, "train #%d right there (d=%.2f)", o.id, o.d);
+            if (!o.train && o.d < 0.9) return String.format(Locale.US, "barrier #%d right there", o.id);
+        }
+        return null;
+    }
+
     private Obstacle nearestBarrier(int a) {
         Obstacle b = null;
         for (Obstacle o : obstacles)
@@ -541,13 +562,16 @@ public final class SurferBrain {
             if (x < -1 || x > 1) return "no track";
             if (!laneSeen[x + 1]) return "not seen";
             if (blockedBeside[x + 1]) return "train alongside";
-            double tt = trainTti(x) - lead;                         // after our swipe lands
+            String near = nearThing(x);
+            if (near != null) return near;
+            double tt = anyTrainTti(x) - lead;                      // after our swipe lands
             double passBy = Math.abs(x - c) * laneChangeMs;
             if (x != a && tt < passBy + p.safeExtraMs) return "train in the way";
             if (x == a) {
                 if (tt < arrive - lead + p.targetClearMs) return String.format(Locale.US, "train in %.0f ms", tt);
-                Obstacle b = nearestBarrier(x);
-                if (b != null && b.tti(worldSpeed) - lead < arrive - lead + 150) return "barrier right there";
+                for (Obstacle b : obstacles)
+                    if (b.lane == x && !b.train && Math.max(0, b.d) / Math.max(b.v, worldSpeed) * 1000.0 - lead < arrive - lead + 150)
+                        return "barrier right there";
                 return null;
             }
         }
@@ -556,7 +580,7 @@ public final class SurferBrain {
     /** Lower = better. Trains soon = bad, barriers = a little bad, coins / middle = a little good. */
     private double laneCost(int a) {
         double cost = 0;
-        double tt = trainTti(a);
+        double tt = anyTrainTti(a);
         if (tt < 2500) cost += (2500 - Math.max(0, tt)) / 2500 * 3;
         if (nearestBarrier(a) != null) cost += 0.3;
         if (p.seekCoins && laneReward[a + 1] > p.coinMin) cost -= Math.min(0.8, laneReward[a + 1] / 2500);

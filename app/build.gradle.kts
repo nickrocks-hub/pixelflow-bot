@@ -10,8 +10,8 @@ android {
         applicationId = "com.aigame.subwaysurfers"
         minSdk = 26          // gesture dispatch with continued strokes, adaptive icons
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.6.1"
+        versionCode = 9
+        versionName = "1.6.2"
     }
 
     // Fixed key committed to the repo, so every build from GitHub installs as an update.

@@ -144,6 +144,22 @@ public class ScenarioTest {
           List<String> mv = run(b, wd, t, 2000, 0);
           check("boxed in: no unsafe swipe, one jump", mv.size() == 1 && mv.get(0).startsWith("JUMP"), mv); }
 
+        // 5c. A train we're running alongside (still on screen, never "approaching") -> never swipe into it
+        { SurferBrain b = brain(); World wd = new World(); long t = warm(b, wd);
+          Ob beside = new Ob(-1, 0.5, 0.0, true); beside.appear = t; wd.obs.add(beside);   // from the log: d=0.48, v~0
+          Ob o = new Ob(0, 3.5, 2.4, true); o.appear = t + 300; wd.obs.add(o);
+          List<String> mv = run(b, wd, t, 2000, 0);
+          check("train alongside (static on screen): never swipe into it", mv.stream().noneMatch(s2 -> s2.startsWith("LEFT")), mv); }
+
+        // 5d. A train just seen in the neighbour lane (speed not yet confirmed) -> not a target
+        { SurferBrain b = brain(); World wd = new World(); long t = warm(b, wd);
+          wd.alongside[2] = true;
+          Ob o = new Ob(0, 3.5, 2.4, true); o.appear = t; wd.obs.add(o);
+          Ob fresh = new Ob(-1, 1.6, 5.0, true); fresh.appear = t + 1000; wd.obs.add(fresh);  // appears late, fast
+          List<String> mv = run(b, wd, t + 900, 600, 0);
+          boolean leftIntoIt = mv.stream().anyMatch(s2 -> s2.startsWith("LEFT"));
+          check("unconfirmed train in target lane: no swipe into it", !leftIntoIt, mv); }
+
         // 6. Two-lane movement -> two separate, registered swipes
         { SurferBrain b = brain(); World wd = new World(); wd.lane = -1;
           long t = warm(b, wd);

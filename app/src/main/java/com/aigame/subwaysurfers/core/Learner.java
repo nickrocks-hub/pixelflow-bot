@@ -115,8 +115,8 @@ public final class Learner {
         String what;
         switch (c) {
             case LANE_CHANGE:
-                targetClearMs = clamp(targetClearMs + 120, 600, 2000);
-                safeExtraMs = clamp(safeExtraMs + 60, 150, 900);
+                targetClearMs = clamp(targetClearMs + 100, 600, 1300);
+                safeExtraMs = clamp(safeExtraMs + 50, 150, 600);
                 what = "changed lane into danger → wants clearer lanes (" + targetClearMs + " ms)";
                 break;
             case JUMP_EARLY:
@@ -208,7 +208,7 @@ public final class Learner {
     // ---- save / load as one line of text
     public String serialize() {
         StringBuilder sb = new StringBuilder();
-        sb.append(String.format(Locale.US, "v2;%d;%d;%d;%d;%.3f;%d;%d;%d;%d;%.3f;%.2f;%d;%d;%.2f;%.2f;%.2f",
+        sb.append(String.format(Locale.US, "v3;%d;%d;%d;%d;%.3f;%d;%d;%d;%d;%.3f;%.2f;%d;%d;%.2f;%.2f;%.2f",
                 reactMs, safeExtraMs, targetClearMs, jumpAtMs, tallDepth,
                 bReact, bSafe, bClear, bJump, bTall, bestRunSec, runs, recentN, recent[0], recent[1], recent[2]));
         for (int c : causeCount) sb.append(';').append(c);
@@ -219,7 +219,7 @@ public final class Learner {
     /** Load saved state, or start fresh from base if there is none / it's unreadable. */
     public static Learner load(String s, SurferBrain.Params base) {
         Learner l = new Learner(base);
-        if (s == null || !s.startsWith("v2;")) return l;   // v1 = older timing meanings: start fresh
+        if (s == null || !s.startsWith("v3;")) return l;   // older versions learned from bugs since fixed: start fresh
         try {
             String[] f = s.split(";", -1);
             int i = 1;
