@@ -230,6 +230,11 @@ public class ProfileActivity extends Activity {
             return "Open a level, then press ▶ Solve on the floating panel (🔍 Read board checks the reading first). For ⟳ Next level, press "
                     + "Teach next once on a level-complete screen and tap the button yourself.";
         }
+        if (Adapters.MINECRAFT.id.equals(adapterId)) {
+            return "Survival world, touch controls (not split controls), auto-jump on, landscape. Stand near trees with your hands free and "
+                    + "close all menus, choose 🕹 Joystick or ✚ D-pad on the panel to match your layout, then press ▶ Start. It gathers about 4 logs, "
+                    + "crafts, places a crafting table and makes wooden tools. ⏸ Pause or touching the screen stops it.";
+        }
         if (Adapters.ARROWS.id.equals(adapterId)) {
             return "Open a level, then press ▶ Solve on the floating panel (🔍 Read board shows what it sees first). For ⟳ Next level, press "
                     + "Teach next once on a level-complete screen and tap the button yourself.";

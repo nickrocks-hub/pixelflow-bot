@@ -48,12 +48,22 @@ public final class Adapters {
             "Exact rule-based player, no AI model. Not for the bridge, hexagon or warp variants yet. Checked on a 5×5 screenshot and "
                     + "on rendered boards up to 14×14.");
 
+    public static final Info MINECRAFT = new Info("minecraft-start", "Minecraft first-minutes player", "com.mojang.minecraftpe",
+            GameProfile.Pace.REAL_TIME,
+            "Survival, touch controls: finds tree trunks on screen, walks to them, holds to mine the logs, counts them in the recipe book, "
+                    + "then crafts planks, a crafting table and sticks, places the table and makes a wooden pickaxe (and an axe and sword when "
+                    + "there's wood), and takes the pickaxe in hand. Stops if it takes damage or sees a screen it doesn't know.",
+            "Only the first minutes of the game — not mining, the Nether or the Ender Dragon. Trees are found by bark colour (checked on "
+                    + "jungle trees from your recording); birch is missed. Calibrated to your 2520×1080 screen at the default GUI scale. "
+                    + "Not tested on the phone yet.");
+
     public static List<Info> all() {
         List<Info> l = new ArrayList<>();
         l.add(NONOGRAM_COM);
         l.add(CANDY_CRUSH);
         l.add(ARROWS);
         l.add(FLOW);
+        l.add(MINECRAFT);
         return l;
     }
 
@@ -69,12 +79,13 @@ public final class Adapters {
         return null;
     }
 
-    /** Which floating-panel player runs this adapter: "nonogram", "candy", "arrows", "flow", or "none". */
+    /** Which floating-panel player runs this adapter: "nonogram", "candy", "arrows", "flow", "minecraft", or "none". */
     public static String panelKey(String adapterId) {
         if (NONOGRAM_COM.id.equals(adapterId)) return "nonogram";
         if (CANDY_CRUSH.id.equals(adapterId)) return "candy";
         if (ARROWS.id.equals(adapterId)) return "arrows";
         if (FLOW.id.equals(adapterId)) return "flow";
+        if (MINECRAFT.id.equals(adapterId)) return "minecraft";
         return "none";
     }
 
@@ -124,6 +135,16 @@ public final class Adapters {
         fl.pace = GameProfile.Pace.TURN_BASED;
         fl.notes = "Built from a 5×5 screenshot; solver checked on rendered boards up to 14×14.";
         l.add(fl);
+        GameProfile mc = new GameProfile();
+        mc.id = "minecraft-start";
+        mc.name = "Minecraft";
+        mc.kind = GameProfile.Kind.EXTERNAL_APP;
+        mc.packageName = MINECRAFT.packageName;
+        mc.adapterId = MINECRAFT.id;
+        mc.support = GameProfile.Support.SUPPORTED;
+        mc.pace = GameProfile.Pace.REAL_TIME;
+        mc.notes = "Built from your screen recording: logs → planks → crafting table → wooden pickaxe.";
+        l.add(mc);
         return l;
     }
 }

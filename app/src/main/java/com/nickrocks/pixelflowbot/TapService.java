@@ -51,6 +51,7 @@ public class TapService extends AccessibilityService {
     private CandyMode candy;
     private ArrowsMode arrows;
     private FlowMode flow;
+    private MinecraftMode mc;
     private InstructionMode instr;
     private LinearLayout noneBox;
     private TextView noneText, brand;
@@ -155,6 +156,12 @@ public class TapService extends AccessibilityService {
             Log.e(TAG, "Flow mode could not start", t);
         }
         try {
+            mc = new MinecraftMode(this);
+            panel.addView(mc.box());
+        } catch (Throwable t) {
+            Log.e(TAG, "Minecraft mode could not start", t);
+        }
+        try {
             instr = new InstructionMode(this);
             panel.addView(instr.box());
         } catch (Throwable t) {
@@ -236,6 +243,7 @@ public class TapService extends AccessibilityService {
         if (candy != null) candy.box().setVisibility(key.equals("candy") ? View.VISIBLE : View.GONE);
         if (arrows != null) arrows.box().setVisibility(key.equals("arrows") ? View.VISIBLE : View.GONE);
         if (flow != null) flow.box().setVisibility(key.equals("flow") ? View.VISIBLE : View.GONE);
+        if (mc != null) mc.box().setVisibility(key.equals("minecraft") ? View.VISIBLE : View.GONE);
         boolean ai = key.equals("none") && instr != null;
         if (instr != null) {
             instr.box().setVisibility(ai ? View.VISIBLE : View.GONE);
@@ -250,7 +258,7 @@ public class TapService extends AccessibilityService {
 
     /** A game's player is mid-move: don't switch the panel under it. */
     private boolean busy() {
-        return (nono != null && nono.busy()) || (candy != null && candy.busy()) || (arrows != null && arrows.busy()) || (flow != null && flow.busy()) || (instr != null && instr.busy()) || (next != null && next.busy());
+        return (nono != null && nono.busy()) || (candy != null && candy.busy()) || (arrows != null && arrows.busy()) || (flow != null && flow.busy()) || (mc != null && mc.busy()) || (instr != null && instr.busy()) || (next != null && next.busy());
     }
 
     AutoNext autoNext() { return next; }
@@ -308,7 +316,7 @@ public class TapService extends AccessibilityService {
 
     String foregroundPackage() { return currentPackage(); }
 
-    String gameName(String g) { return "candy".equals(g) ? "Candy Crush" : "nonogram".equals(g) ? "Nonogram" : "arrows".equals(g) ? "the arrows game" : "flow".equals(g) ? "Flow Free" : g; }
+    String gameName(String g) { return "candy".equals(g) ? "Candy Crush" : "nonogram".equals(g) ? "Nonogram" : "arrows".equals(g) ? "the arrows game" : "flow".equals(g) ? "Flow Free" : "minecraft".equals(g) ? "Minecraft" : g; }
 
     void cancelNext() { if (next != null) next.cancel(); }
 
@@ -317,6 +325,7 @@ public class TapService extends AccessibilityService {
         if (active.equals("candy") && candy != null) candy.note(msg);
         else if (active.equals("arrows") && arrows != null) arrows.note(msg);
         else if (active.equals("flow") && flow != null) flow.note(msg);
+        else if (active.equals("minecraft") && mc != null) mc.note(msg);
         else if (active.equals("nonogram") && nono != null) nono.note(msg);
         else if (active.equals("none") && instr != null) instr.note(msg);
         else toast(msg);
@@ -357,6 +366,7 @@ public class TapService extends AccessibilityService {
         if (candy != null) candy.shutdown();
         if (arrows != null) arrows.shutdown();
         if (flow != null) flow.shutdown();
+        if (mc != null) mc.shutdown();
         if (instr != null) instr.shutdown();
         stopped = true;
         handler.removeCallbacksAndMessages(null);
@@ -404,6 +414,7 @@ public class TapService extends AccessibilityService {
         if (candy != null) candy.shutdown();
         if (arrows != null) arrows.shutdown();
         if (flow != null) flow.shutdown();
+        if (mc != null) mc.shutdown();
         if (instr != null) instr.shutdown();
         if (next != null) next.shutdown();
         handler.removeCallbacksAndMessages(null);

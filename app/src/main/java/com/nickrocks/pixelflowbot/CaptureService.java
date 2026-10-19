@@ -62,6 +62,8 @@ public class CaptureService extends Service {
     private HandlerThread captureThread;
     private Handler mainHandler;
     private int width, height, density;
+    private Handler bg;
+    private ImageReader.OnImageAvailableListener listener;
 
     public static boolean isRunning() { return instance != null; }
     public static long getFrameCount() { return frameCount; }
@@ -86,7 +88,43 @@ public class CaptureService extends Service {
 
     /** Delivers the next captured frame (on the capture thread). Frames only arrive when the screen changes. */
     public static void requestFrame(java.util.function.Consumer<com.nickrocks.pixelflowbot.vision.Frame> cb) {
+        CaptureService s = instance;
+        if (cb != null && s != null) s.followRotation();
         frameRequest = cb;
+    }
+
+    /**
+     * Landscape games (Minecraft): capture was usually started in portrait from the app, and a
+     * virtual display doesn't rotate by itself — the game would arrive squeezed into a portrait
+     * picture. When the screen's shape changed, resize the capture to match.
+     */
+    private void followRotation() {
+        Handler h = bg;
+        if (h == null) return;
+        h.post(() -> {
+            try {
+                if (virtualDisplay == null) return;
+                DisplayManager dm = (DisplayManager) getSystemService(DISPLAY_SERVICE);
+                android.view.Display d = dm.getDisplay(android.view.Display.DEFAULT_DISPLAY);
+                if (d == null) return;
+                DisplayMetrics m = new DisplayMetrics();
+                d.getRealMetrics(m);
+                int w = m.widthPixels, hh = m.heightPixels;
+                if (w <= 0 || hh <= 0 || (w == width && hh == height)) return;
+                ImageReader nr = ImageReader.newInstance(w, hh, PixelFormat.RGBA_8888, 2);
+                nr.setOnImageAvailableListener(listener, bg);
+                virtualDisplay.resize(w, hh, density);
+                virtualDisplay.setSurface(nr.getSurface());
+                ImageReader old = imageReader;
+                imageReader = nr;
+                width = w;
+                height = hh;
+                if (old != null) old.close();
+                Log.i(TAG, "capture follows rotation: " + w + "x" + hh);
+            } catch (Exception e) {
+                Log.e(TAG, "couldn't follow rotation", e);
+            }
+        });
     }
 
     public static void stop(Context ctx) {
@@ -147,7 +185,7 @@ public class CaptureService extends Service {
 
         captureThread = new HandlerThread("capture");
         captureThread.start();
-        Handler bg = new Handler(captureThread.getLooper());
+        bg = new Handler(captureThread.getLooper());
 
         // Must be registered before createVirtualDisplay on Android 14+.
         projection.registerCallback(new MediaProjection.Callback() {
@@ -159,7 +197,7 @@ public class CaptureService extends Service {
         }, mainHandler);
 
         imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2);
-        imageReader.setOnImageAvailableListener(reader -> {
+        listener = reader -> {
             Image img = null;
             try {
                 img = reader.acquireLatestImage();
@@ -184,7 +222,8 @@ public class CaptureService extends Service {
             } finally {
                 if (img != null) img.close();
             }
-        }, bg);
+        };
+        imageReader.setOnImageAvailableListener(listener, bg);
 
         virtualDisplay = projection.createVirtualDisplay("AIGameBot",
                 width, height, density,
@@ -284,6 +323,7 @@ public class CaptureService extends Service {
         if (imageReader != null) { imageReader.close(); imageReader = null; }
         if (projection != null) { projection.stop(); projection = null; }
         if (captureThread != null) { captureThread.quitSafely(); captureThread = null; }
+        bg = null;
         frameCount = 0;
         super.onDestroy();
     }
