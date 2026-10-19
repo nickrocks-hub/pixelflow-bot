@@ -123,8 +123,8 @@ public class MainActivity extends Activity {
 
         root.addView(header("Good to know"));
         root.addView(body("• Drag the floating panel by its ✥ handle to move it anywhere.\n"
-                + "• It reacts to obstacles in your lane: moves to a free side lane if there is one, "
-                + "otherwise jumps over short barriers and trains it can't get around.\n"
+                + "• Barriers in your lane: it jumps (or rolls, if you switch that). Trains: it moves to a "
+                + "side lane only if that lane is clear well ahead and there's no train right beside you.\n"
                 + "• When your lane is clear it moves over to lines of coins and power-ups if that lane is safe.\n"
                 + "• Standing on train roofs and flying with the jetpack, it stays still.\n"
                 + "• It only swipes while Subway Surfers is the app in front, and it never presses buttons, "

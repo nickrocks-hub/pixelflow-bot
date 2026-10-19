@@ -46,6 +46,10 @@ public final class SurferBrain {
         public double startSpeed = 2.4;
         /** Only move towards a side if we're at least this sure a track exists there. */
         public double laneSure = 0.8;
+        /** Lane pitch / (near row - horizon) above this = camera at ground level (roofs ~0.43, ground ~0.56). */
+        public double groundPitchRatio = 0.50;
+        /** A lane we move into must be clear at least this long (ms). */
+        public int targetClearMs = 900;
     }
 
     public final Params p;
@@ -154,7 +158,11 @@ public final class SurferBrain {
         pitch = Double.isNaN(pitch) ? vision.gridP : pitch + 0.3 * (vision.gridP - pitch);
         double feetY = h * vision.runnerFeet;
         boolean panning = nowMs < laneChangeUntil;
-        if (!panning && !r.tracks.get(1).blockedAtStart) observeLanes(r);
+        // On train roofs the camera is higher (smaller lane pitch for the same horizon) and
+        // the runner's offset no longer matches the ground pattern: don't read lanes then.
+        double pitchRatio = vision.gridP / (h * vision.rowNear - r.vpY);
+        boolean groundCamera = pitchRatio > p.groundPitchRatio;
+        if (!panning && groundCamera && !r.tracks.get(1).blockedAtStart) observeLanes(r);
         int lane = lane();
         lastLane = lane;
         boolean leftExists = belief[0] < 1 - p.laneSure;
@@ -213,21 +221,26 @@ public final class SurferBrain {
         } else if (onRoof) {
             why = "on a train roof";
         } else if (threat < react && laneConfirmed[1]) {
-            // try a neighbouring lane; among safe ones prefer the one with more coins
+            // A barrier: jump it (or roll). A train: move to a lane that is clear well ahead.
             int bestDir = 0; double bestScore = -1;
+            double need = Math.max(p.targetClearMs, threat + p.safeExtraMs);
             for (int k = 0; k <= 2; k += 2) {
                 if (!laneOk[k]) continue;
-                if (laneTti[k] <= threat + p.safeExtraMs) continue;
-                double score = Math.min(laneTti[k], 5000) + (p.seekCoins ? laneReward[k] * 4 : 0);
+                if (laneTti[k] < need) continue;
+                double score = Math.min(laneTti[k], 5000) + (p.seekCoins ? laneReward[k] * 2 : 0);
                 if (score > bestScore) { bestScore = score; bestDir = k - 1; }
             }
-            if (bestDir != 0 && nowMs >= nextLaneOk) {
+            boolean train = laneTall[1];
+            if (!train && nowMs >= nextAirOk) {
+                m = p.jumpLowObstacles ? Move.JUMP : Move.ROLL;
+                why = "barrier: " + (m == Move.JUMP ? "jump" : "roll");
+            } else if (train && bestDir != 0 && nowMs >= nextLaneOk) {
                 m = bestDir < 0 ? Move.LEFT : Move.RIGHT;
-                why = "dodge " + (bestDir < 0 ? "left" : "right");
-            } else if (bestDir == 0 && nowMs >= nextAirOk) {
-                if (laneTall[1]) { m = Move.JUMP; why = "boxed in, jump"; }
-                else { m = p.jumpLowObstacles ? Move.JUMP : Move.ROLL; why = "barrier: " + (m == Move.JUMP ? "jump" : "roll"); }
-            } else why = "waiting";
+                why = "train: dodge " + (bestDir < 0 ? "left" : "right");
+            } else if (train && bestDir == 0 && threat < react * 0.6 && nowMs >= nextAirOk) {
+                // nowhere to go: jump as late as possible (it may be a ramp, or we may land on it)
+                m = Move.JUMP; why = "boxed in, jump";
+            } else why = train ? "train ahead, waiting for a gap" : "waiting";
         } else if (nowMs >= nextLaneOk && nowMs >= nextCoinOk && threat > react + p.safeExtraMs) {
             // free to roam: go for coins / power-ups, else drift back to the middle
             int dir = 0;
@@ -235,13 +248,14 @@ public final class SurferBrain {
             if (p.seekCoins) {
                 double bestV = Math.max(p.coinMin, laneReward[1] * p.coinRatio);
                 for (int k = 0; k <= 2; k += 2) {
-                    if (!laneOk[k] || laneTti[k] < react + 2 * p.safeExtraMs) continue;
+                    // only into a lane at least as clear as ours (and clear for targetClearMs)
+                    if (!laneOk[k] || laneTti[k] < Math.max(p.targetClearMs, Math.min(threat, 2000))) continue;
                     if (laneReward[k] > bestV) { bestV = laneReward[k]; dir = k - 1; reason = "coins " + (k == 0 ? "left" : "right"); }
                 }
             }
             if (dir == 0 && p.preferMiddle && lane != 0 && laneReward[1] < p.coinMin && belief[lane + 1] > 0.85) {
                 int k = lane < 0 ? 2 : 0;           // towards the middle
-                if (laneOk[k] && laneTti[k] > react + 2 * p.safeExtraMs) { dir = k - 1; reason = "back to middle"; }
+                if (laneOk[k] && laneTti[k] >= Math.max(p.targetClearMs, Math.min(threat, 2000))) { dir = k - 1; reason = "back to middle"; }
             }
             if (dir != 0) {
                 m = dir < 0 ? Move.LEFT : Move.RIGHT;

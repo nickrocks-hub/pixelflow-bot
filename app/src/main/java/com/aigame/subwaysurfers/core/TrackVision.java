@@ -469,6 +469,10 @@ public final class TrackVision {
         int needMiss = Math.max(4, (int) Math.round(10 * s));
         boolean found = false;
         int margin = Math.max(2, (int) Math.round(3 * s));
+        // Behind a barrier the rails carry on; behind a train front they don't, though its lit
+        // windows can look like rail for a row or two. So "rails resume" needs a solid run.
+        int resumeNeed = Math.max(6, (int) Math.round(12 * s));
+        int seenRun = 0, lastMissY = -1;
         for (int y = start; y > horizon; y--) {
             double xl = t.left.xAt(y, yn, yf), xr = t.right.xAt(y, yn, yf);
             boolean lOn = xl >= margin && xl < w - margin, rOn = xr >= margin && xr < w - margin;
@@ -479,19 +483,24 @@ public final class TrackVision {
                 if (yy <= 0) break;
                 if ((lOn && railAt(t.left.xAt(yy, yn, yf), yy, tol)) || (rOn && railAt(t.right.xAt(yy, yn, yf), yy, tol))) seen = true;
             }
-            if (!seen) {
-                if (missRun == 0) firstMiss = y;
-                missRun++;
-                if (missRun >= needMiss && !found) {
-                    found = true;
-                    t.obstacleY = firstMiss;
-                    t.blockedAtStart = firstMiss >= start - win;
-                }
+            if (!found) {
+                if (!seen) {
+                    if (missRun == 0) firstMiss = y;
+                    missRun++;
+                    if (missRun >= needMiss) {
+                        found = true;
+                        t.obstacleY = firstMiss;
+                        t.blockedAtStart = firstMiss >= start - win;
+                        lastMissY = y;
+                    }
+                } else missRun = 0;
             } else {
-                if (found) { t.railsResume = true; t.obstacleSpan = firstMiss - y; return; }
-                missRun = 0;
+                if (seen) {
+                    seenRun++;
+                    if (seenRun >= resumeNeed) { t.railsResume = true; t.obstacleSpan = firstMiss - lastMissY; return; }
+                } else { seenRun = 0; lastMissY = y; }
             }
         }
-        if (found) { t.obstacleSpan = firstMiss - horizon; t.railsResume = false; }
+        if (found) { t.obstacleSpan = firstMiss - Math.max(horizon, lastMissY - 1); t.railsResume = false; }
     }
 }
