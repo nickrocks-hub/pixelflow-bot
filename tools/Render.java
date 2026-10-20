@@ -31,7 +31,7 @@ final class Render {
         static Style random(Random r) {
             Style s = new Style();
             s.line = 1 + r.nextInt(5);
-            s.fontScale = 0.5f + r.nextFloat() * 0.25f;
+            s.fontScale = 0.5f + r.nextFloat() * 0.35f;
             s.font = r.nextBoolean() ? Font.SANS_SERIF : (r.nextBoolean() ? Font.MONOSPACED : Font.SERIF);
             s.colorJitter = r.nextInt(30);
             s.jpegQuality = r.nextInt(3) == 0 ? 0 : 60 + r.nextInt(36);

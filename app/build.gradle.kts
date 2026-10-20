@@ -10,8 +10,8 @@ android {
         applicationId = "com.aigame.minesweeper"
         minSdk = 26          // adaptive icons, gesture dispatch
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
     }
 
     // Fixed key committed to the repo, so every build from GitHub installs as an update.

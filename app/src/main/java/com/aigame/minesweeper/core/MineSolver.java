@@ -22,10 +22,12 @@ public final class MineSolver {
         public double guessRisk = 1;
         public boolean exact = true;                           // false if a region was too big to count fully
         public boolean contradiction;                          // the numbers don't fit together (misread)
+        /** log of the number of mine layouts that fit (used to weigh "what would this tile show"). */
+        public double logWays = Double.NEGATIVE_INFINITY;
     }
 
     /** Biggest connected region counted exactly; beyond it, local logic + estimates. */
-    static final int MAX_EXACT = 48;
+    public static int MAX_EXACT = 48;
     static final long MAX_NODES = 3_000_000;
 
     public static Result solve(int cols, int rows, int[] cell, int totalMines) {
@@ -136,6 +138,7 @@ public final class MineSolver {
                     total += wgt;
                     if (outside > 0) outsideMines += wgt * (M - K) / (double) outside;
                 }
+                res.logWays = best + Math.log(total);
                 double pOut = outside > 0 ? outsideMines / total : 0;
                 for (int i = 0; i < nv; i++) if (!frontier[i]) probVar[i] = pOut;
                 for (int ci = 0; ci < nc; ci++) {
@@ -164,6 +167,7 @@ public final class MineSolver {
             // no usable total: regions independent, outside tiles at a typical density
             double dens = 0.16;
             for (int i = 0; i < nv; i++) if (!frontier[i]) probVar[i] = dens;
+            res.logWays = 0;
             for (int ci = 0; ci < nc; ci++) {
                 if (!exactComp[ci]) continue;
                 // weight arrangements by density^k (1-d)^(n-k) so fewer-mine layouts aren't overcounted
@@ -171,6 +175,7 @@ public final class MineSolver {
                 double tot = 0;
                 double[] wk = new double[ways[ci].length];
                 for (int k = 0; k < wk.length; k++) { wk[k] = ways[ci][k] * Math.pow(dens / (1 - dens), k); tot += wk[k]; }
+                res.logWays += Math.log(tot);
                 for (int lv = 0; lv < vs.size(); lv++) {
                     double num = 0;
                     for (int k = 0; k < wk.length; k++) num += mineWays[ci][lv][k] * Math.pow(dens / (1 - dens), k);
@@ -218,6 +223,81 @@ public final class MineSolver {
             if (s < bestScore) { bestScore = s; res.guess = c; res.guessRisk = p; }
         }
         return res;
+    }
+
+    /** How much a guess is worth beyond surviving it; see {@link #pickGuess}. */
+    public static double LOOK_ALPHA = 0.6;
+
+    /**
+     * Better forced guess: among the least risky tiles, prefer the one whose number is most likely to
+     * lead straight to safe tiles. For each candidate and each number it could show, the board is
+     * solved again; the number's likelihood comes from counting the layouts that fit.
+     * score = P(safe) · (alpha + (1 − alpha) · P(the revealed number gives a safe tile)).
+     * Stops looking at more candidates when {@code budgetMs} runs out.
+     */
+    public static int pickGuess(int cols, int rows, int[] cell, int totalMines, Result base, long budgetMs) {
+        if (base.guess < 0) return -1;
+        double minP = base.guessRisk;
+        long t0 = System.nanoTime();
+        // candidates: lowest risk first, within a few points of the best
+        List<Integer> cand = new ArrayList<>();
+        List<Double> risk = new ArrayList<>();
+        int n = cols * rows;
+        Integer[] order = new Integer[n];
+        int m = 0;
+        for (int i = 0; i < n; i++) {
+            if (cell[i] != MineVision.UNKNOWN) continue;
+            double p = base.prob[i];
+            if (Double.isNaN(p) || p > minP + 0.04 || p >= 1 - 1e-9) continue;
+            order[m++] = i;
+        }
+        Integer[] o = java.util.Arrays.copyOf(order, m);
+        java.util.Arrays.sort(o, (a, b) -> Double.compare(base.prob[a], base.prob[b]));
+        // many tiles far from the numbers share one risk: try only a few of them (corners/edges first)
+        int outsideTaken = 0;
+        for (int i : o) {
+            boolean frontier = false;
+            int c = i % cols, r = i / cols, closed = 0;
+            for (int dr = -1; dr <= 1; dr++) for (int dc = -1; dc <= 1; dc++) {
+                if (dr == 0 && dc == 0) continue;
+                int x = c + dc, y = r + dr;
+                if (x < 0 || y < 0 || x >= cols || y >= rows) continue;
+                int v = cell[y * cols + x];
+                if (v >= 0 && v <= 8) frontier = true;
+                if (v == MineVision.UNKNOWN || v == MineVision.FLAG) closed++;
+            }
+            if (!frontier) {
+                if (closed > 5 || outsideTaken >= 3) continue;
+                outsideTaken++;
+            }
+            cand.add(i);
+            risk.add(base.prob[i]);
+            if (cand.size() >= 10) break;
+        }
+        if (!cand.contains(base.guess)) { cand.add(0, base.guess); risk.add(0, base.guessRisk); }
+        double bestScore = -1;
+        int best = base.guess;
+        int[] work = cell.clone();
+        for (int k = 0; k < cand.size(); k++) {
+            if (k > 0 && (System.nanoTime() - t0) / 1_000_000 > budgetMs) break;
+            int c = cand.get(k);
+            double pSafe = 1 - risk.get(k);
+            double wSum = 0, wProg = 0;
+            for (int v = 0; v <= 8; v++) {
+                work[c] = v;
+                Result r = solve(cols, rows, work, totalMines);
+                if (r.contradiction || r.logWays == Double.NEGATIVE_INFINITY) continue;
+                double w = Math.exp(r.logWays - base.logWays);
+                if (!(w > 0) || Double.isInfinite(w)) { if (Double.isInfinite(w)) w = 1e300; else continue; }
+                wSum += w;
+                if (!r.safe.isEmpty()) wProg += w;
+            }
+            work[c] = cell[c];
+            double pProg = wSum > 0 ? wProg / wSum : 0;
+            double score = pSafe * (LOOK_ALPHA + (1 - LOOK_ALPHA) * pProg);
+            if (score > bestScore + 1e-12) { bestScore = score; best = c; }
+        }
+        return best;
     }
 
     /** Single-number and two-number (subset) rules, for regions too big to count. */

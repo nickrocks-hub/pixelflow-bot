@@ -285,6 +285,9 @@ public final class MineVision {
         return n == 0 ? 0 : ok / (float) n;
     }
 
+    /** Neutral near-black (mine body, "7"), not the dark navy or maroon of 4 and 5. */
+    static boolean ink(int p) { return lum(p) < 60 && sat(p) < 40; }
+
     static boolean redish(int p) {
         int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
         return r > 170 && g < 90 && b < 90;
@@ -305,16 +308,24 @@ public final class MineVision {
 
         // opened tile
         float redFill = frac(px, w, h, left, top, sw, sh, 0.08f, 0.08f, 0.92f, 0.92f, MineVision::redish);
-        float black = frac(px, w, h, left, top, sw, sh, 0.15f, 0.15f, 0.85f, 0.85f, p -> lum(p) < 45);
-        float core = frac(px, w, h, left, top, sw, sh, 0.42f, 0.42f, 0.58f, 0.58f, p -> lum(p) < 60 || white(p));
-        if (redFill > 0.45f && black > 0.08f) return BOOM;
-        if (black > 0.16f && core > 0.85f) return MINE;
+        // a mine is a round, truly black (not navy "4") ball: black all around the middle, not just a stroke
+        float black = frac(px, w, h, left, top, sw, sh, 0.15f, 0.15f, 0.85f, 0.85f, MineVision::ink);
+        float core = frac(px, w, h, left, top, sw, sh, 0.42f, 0.42f, 0.58f, 0.58f, p -> ink(p) || white(p));
+        // black on at least 3 of 4 sides of the middle (one side may hold the ball's shine)
+        int ring = 0;
+        if (frac(px, w, h, left, top, sw, sh, 0.34f, 0.46f, 0.40f, 0.54f, MineVision::ink) > 0.6f) ring++;
+        if (frac(px, w, h, left, top, sw, sh, 0.60f, 0.46f, 0.66f, 0.54f, MineVision::ink) > 0.6f) ring++;
+        if (frac(px, w, h, left, top, sw, sh, 0.46f, 0.34f, 0.54f, 0.40f, MineVision::ink) > 0.6f) ring++;
+        if (frac(px, w, h, left, top, sw, sh, 0.46f, 0.60f, 0.54f, 0.66f, MineVision::ink) > 0.6f) ring++;
+        boolean ball = black > 0.16f && core > 0.7f && ring >= 3;
+        if (redFill > 0.45f && black > 0.08f && ring >= 3) return BOOM;
+        if (ball) return MINE;
 
         // count number colours in the middle of the tile
         int xa = Math.round(left + 0.15f * sw), xb = Math.round(left + 0.85f * sw);
         int ya = Math.round(top + 0.12f * sh), yb = Math.round(top + 0.88f * sh);
         int[] votes = new int[9];
-        int n = 0, odd = 0;
+        int n = 0, odd = 0, maxB = 0, maxR = 0;
         for (int y = ya; y < yb; y++) {
             if (y < 0 || y >= h) continue;
             for (int x = xa; x < xb; x++) {
@@ -334,12 +345,20 @@ public final class MineVision {
                 // grey "8" must really be mid grey, not anti-aliased edge of something
                 if (best == 8 && (l < 105 || l > 150 || s > 18)) continue;
                 votes[best]++;
+                if (b > r + 40 && b > gg + 40) maxB = Math.max(maxB, b);
+                if (r > b + 40 && r > gg + 40) maxR = Math.max(maxR, r);
             }
         }
         if (n == 0) return UNREADABLE;
         int best = 0, bv = 0;
         for (int k = 1; k <= 8; k++) if (votes[k] > bv) { bv = votes[k]; best = k; }
-        if (bv >= Math.max(3, n * 0.025f)) return best;
+        if (bv >= Math.max(3, n * 0.025f)) {
+            // same hue, different shade: pure blue 1 vs navy 4, red 3 vs maroon 5 — the brightest ink decides
+            int blue = votes[1] + votes[4], red = votes[3] + votes[5];
+            if ((best == 1 || best == 4) && blue >= bv) return maxB >= 190 ? 1 : 4;
+            if ((best == 3 || best == 5) && red >= bv) return maxR >= 190 ? 3 : 5;
+            return best;
+        }
         if (odd > n * 0.08f) return UNREADABLE;                 // something else is drawn here
         return 0;
     }

@@ -19,6 +19,9 @@ import java.util.Random;
 public class Sim {
     static String FIRST = System.getenv().getOrDefault("FIRST", "safe");
     static boolean DEBUG = System.getenv("DEBUG") != null;
+    static boolean LOOK = System.getenv("LOOK") != null;
+    static int COUNTER_OFF = Integer.parseInt(System.getenv().getOrDefault("COUNTER_OFF", "0"));
+    static int FIRSTCELL(int cols, int rows) { return "centre".equals(System.getenv("TAP")) ? (rows / 2) * cols + cols / 2 : 0; }
 
     static final class Game {
         final int cols, rows, mines;
@@ -105,14 +108,16 @@ public class Sim {
         long t0 = System.nanoTime();
         for (int gi = 0; gi < N; gi++) {
             Game g = new Game(cols, rows, mines, rnd);
-            g.click(0);
+            if (System.getenv("EXACT") != null) MineSolver.MAX_EXACT = Integer.parseInt(System.getenv("EXACT"));
+            if (System.getenv("ALPHA") != null) MineSolver.LOOK_ALPHA = Double.parseDouble(System.getenv("ALPHA"));
+            g.click(FIRSTCELL(cols, rows));
             boolean guessed = false;
             int steps = 0;
             while (!g.lost && !g.won() && steps++ < 1000) {
                 int[] v = g.view();
                 MineSolver.Result r = MineSolver.solve(cols, rows, v, mines);
                 if (!r.safe.isEmpty()) for (int c : r.safe) g.click(c);
-                else { guessed = true; g.click(r.guess); }
+                else { guessed = true; g.click(LOOK ? MineSolver.pickGuess(cols, rows, v, mines, r, 100000) : r.guess); }
             }
             if (g.won()) wins++;
             if (guessed) guessGames++;
@@ -132,7 +137,7 @@ public class Sim {
         MineBrain brain = new MineBrain(p);
         Game g = new Game(cols, rows, mines, rnd);
         long now = 0;
-        int frames = 0, rounds = 0, glitches = 0, wrongTaps = 0;
+        int frames = 0, rounds = 0, glitches = 0, wrongTaps = 0, premature = 0;
         long renderNs = 0, brainNs = 0;
         Render.Style st = new Render.Style();
         int gamesTarget = N;
@@ -147,7 +152,7 @@ public class Sim {
                 for (int c : pressed) if (before[c] == -1 || true) view[c] = 0;
                 glitches++;
             }
-            int counter = mines;
+            int counter = mines + COUNTER_OFF;
             long t0 = System.nanoTime();
             BufferedImage im = Render.draw(cols, rows, view, counter, st, rnd);
             Img f = Img.of(im, 540);
@@ -163,6 +168,7 @@ public class Sim {
             if (plan == null) { now += 50; continue; }
             // deliver the taps
             if (plan.cells.length == 0) {             // smiley
+                if (g.started && !g.lost && !g.won()) premature++;
                 g = new Game(cols, rows, mines, rnd);
                 now += 60;
                 brain.onTapsDone(now, true, "");
@@ -179,8 +185,8 @@ public class Sim {
             glitchNext = rnd.nextInt(4) == 0;   // a quarter of the time, one stale/pressed frame first
             now += 40;
         }
-        System.out.printf("pixels %dx%d/%d first=%s: %s, %d games, %d guesses, %d frames (%d glitch frames), wrong certain taps %d%n",
-                cols, rows, mines, FIRST, brain.stats(), brain.wins + brain.losses, brain.guesses, frames, glitches, wrongTaps);
+        System.out.printf("pixels %dx%d/%d first=%s: %s, %d games, %d guesses, %d frames (%d glitch frames), wrong certain taps %d, new game while unfinished %d%n",
+                cols, rows, mines, FIRST, brain.stats(), brain.wins + brain.losses, brain.guesses, frames, glitches, wrongTaps, premature);
         System.out.printf("  per frame: render %.1f ms, bot %.2f ms; mean simulated win time n/a (tap pacing)%n",
                 renderNs / 1e6 / frames, brainNs / 1e6 / frames);
     }

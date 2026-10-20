@@ -138,7 +138,9 @@ public class MainActivity extends Activity {
                 + "• It never places flags and never taps anything outside the board except the smiley for a new game.\n"
                 + "• Before each burst it checks the picture has settled (every tapped tile opened, no half-drawn area), so it never acts on a stale screen.\n"
                 + "• Drag the floating panel by its ✥ handle; it moves itself off the board if it's in the way.\n"
-                + "• On a 9×9 board with 10 mines the logic wins about 92% of games; the rest are lost to forced guesses no player can avoid."));
+                + "• It only starts a new game after it really hit a mine (the tile it tapped turned into a mine), and shows which guess it lost on.\n"
+                + "• Some boards need a guess no player can avoid, so not every game can be won: about 87% on 9×9 with 12 mines, 82% on 16×16 with 38, 79% on 16×30 with 72. "
+                + "With \"Start a new game after hitting a mine\" on, it keeps going until it wins."));
 
         setContentView(scroll);
     }
