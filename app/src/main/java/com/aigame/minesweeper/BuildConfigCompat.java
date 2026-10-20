@@ -1,4 +1,4 @@
-package com.aigame.subwaysurfers;
+package com.aigame.minesweeper;
 
 import android.content.Context;
 import android.content.pm.PackageInfo;

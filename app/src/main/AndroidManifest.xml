@@ -8,10 +8,13 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
-    <!-- so we can open Subway Surfers (Android 11+ package visibility) -->
     <queries>
-        <package android:name="com.kiloo.subwaysurf" />
-        <!-- home screens, so leaving the game for the home screen pauses the bot -->
+        <!-- apps with a launcher icon, so the bot can reopen the Minesweeper game you used last -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <!-- home screens, so the bot never taps on the home screen -->
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.HOME" />
@@ -41,7 +44,7 @@
             android:foregroundServiceType="mediaProjection" />
 
         <service
-            android:name=".SwipeService"
+            android:name=".TapService"
             android:exported="false"
             android:label="@string/accessibility_label"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">

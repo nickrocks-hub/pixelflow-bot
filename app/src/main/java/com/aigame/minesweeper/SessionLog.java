@@ -1,4 +1,4 @@
-package com.aigame.subwaysurfers;
+package com.aigame.minesweeper;
 
 import android.content.ContentResolver;
 import android.content.ContentValues;
@@ -27,8 +27,8 @@ import java.util.zip.ZipOutputStream;
 
 /**
  * Records what the bot saw and did, and saves it to the phone's Downloads
- * folder ("Download/AI GAME SUBWAY SURFERS/") as a .zip:
- *   log.txt   one line per frame (time, lanes, obstacles, coins, move)
+ * folder ("Download/AI GAME MINESWEEPER/") as a .zip:
+ *   log.txt   one line per frame (time, board reading, taps)
  *   info.txt  phone, screen and settings
  *   frames/   the last few seconds of screen frames as JPEGs (named by time),
  *             so the run can be replayed through the same vision code.
@@ -36,13 +36,13 @@ import java.util.zip.ZipOutputStream;
  */
 public final class SessionLog {
 
-    public static final String FOLDER = "AI GAME SUBWAY SURFERS";
-    private static final int KEEP_FRAMES_MS = 8000;
-    private static final int FRAME_EVERY_MS = 50;
+    public static final String FOLDER = "AI GAME MINESWEEPER";
+    private static final int KEEP_FRAMES_MS = 6000;
+    private static final int FRAME_EVERY_MS = 80;
     private static final int MAX_TEXT = 6_000_000;
 
     private final Context ctx;
-    private final HandlerThread thread = new HandlerThread("subway-log");
+    private final HandlerThread thread = new HandlerThread("mines-log");
     private final Handler bg;
     private final long t0;
     private final String sessionName;
@@ -138,7 +138,7 @@ public final class SessionLog {
 
     private void writeZip(String reason) {
         saves++;
-        String name = "subway_" + sessionName + "_" + String.format(Locale.US, "%02d", saves) + "_" + reason + ".zip";
+        String name = "minesweeper_" + sessionName + "_" + String.format(Locale.US, "%02d", saves) + "_" + reason + ".zip";
         OutputStream os = null;
         Uri uri = null;
         try {

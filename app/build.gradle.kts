@@ -3,15 +3,15 @@ plugins {
 }
 
 android {
-    namespace = "com.aigame.subwaysurfers"
+    namespace = "com.aigame.minesweeper"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.aigame.subwaysurfers"
-        minSdk = 26          // gesture dispatch with continued strokes, adaptive icons
+        applicationId = "com.aigame.minesweeper"
+        minSdk = 26          // adaptive icons, gesture dispatch
         targetSdk = 35
-        versionCode = 9
-        versionName = "1.6.2"
+        versionCode = 1
+        versionName = "1.0"
     }
 
     // Fixed key committed to the repo, so every build from GitHub installs as an update.
@@ -25,7 +25,7 @@ android {
     }
 
     buildTypes {
-        // Release build: not debuggable, so Android runs the vision code at full speed.
+        // Release build: not debuggable, so the vision code runs at full speed.
         release {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("fixed")

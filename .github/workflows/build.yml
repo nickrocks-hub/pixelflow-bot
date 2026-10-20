@@ -1,8 +1,8 @@
-name: Build AI GAME SUBWAY SURFERS APK
+name: Build AI GAME MINESWEEPER APK
 
 on:
   push:
-    branches: [subwaysurfers]
+    branches: [minesweeper]
   workflow_dispatch:
 
 permissions:
@@ -39,19 +39,19 @@ jobs:
           exit 1
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/release/app-release.apk AI-GAME-SUBWAY-SURFERS-${{ github.run_number }}.apk
+        run: cp app/build/outputs/apk/release/app-release.apk AI-GAME-MINESWEEPER-${{ github.run_number }}.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AI-GAME-SUBWAY-SURFERS-${{ github.run_number }}
-          path: AI-GAME-SUBWAY-SURFERS-${{ github.run_number }}.apk
+          name: AI-GAME-MINESWEEPER-${{ github.run_number }}
+          path: AI-GAME-MINESWEEPER-${{ github.run_number }}.apk
 
       # Direct .apk download link that works from a phone browser.
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: subwaysurfers-build-${{ github.run_number }}
-          name: AI GAME SUBWAY SURFERS build ${{ github.run_number }}
+          tag_name: minesweeper-build-${{ github.run_number }}
+          name: AI GAME MINESWEEPER build ${{ github.run_number }}
           target_commitish: ${{ github.sha }}
           prerelease: true
           make_latest: false
-          files: AI-GAME-SUBWAY-SURFERS-${{ github.run_number }}.apk
+          files: AI-GAME-MINESWEEPER-${{ github.run_number }}.apk
