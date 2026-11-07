@@ -109,7 +109,12 @@ public final class AutonomousAgent {
         this.rnd = new Random(seed);
         this.combat = new CombatDecisionSystem(rnd);
         this.tu = s.tuning(learned);
-        if (mem.diveButton >= 0) L.btnRole[mem.diveButton] = "DIVE";
+        if (mem.diveButton >= 0) {
+            // the button test found DIVE: swap roles so every role still has a button
+            int old = L.buttonFor("DIVE");
+            if (old >= 0 && old != mem.diveButton) L.btnRole[old] = L.btnRole[mem.diveButton];
+            L.btnRole[mem.diveButton] = "DIVE";
+        }
         wantButtonTest = !mem.buttonsTested && s.useAbilities;
     }
 
@@ -659,8 +664,10 @@ public final class AutonomousAgent {
             if (!z.confirmed) continue;
             boolean inside = o.walk == null || (z.x > o.roomX0 + tile && z.x < o.roomX1 - tile && z.y > o.roomY0 + tile && z.y < o.roomY1 - tile);
             boolean cut = now - lastSceneCutT < 1000;
-            boolean abilityNear = now - lastAbilityT < 1800 && o.player != null && Math.hypot(z.x - o.player.x, z.y - o.player.y) < tile * 7;
-            if ((z.hits > 0 || abilityNear) && inside && !cut) {
+            boolean abilityNear = now - lastAbilityT < 1500 && o.player != null && Math.hypot(z.x - o.player.x, z.y - o.player.y) < tile * 4.5f;
+            // a kill needs a real, steadily tracked enemy (not a flicker) that we hit or blasted just before it vanished
+            boolean steady = z.frames >= 8 && z.last - z.first >= 600;
+            if ((z.hits > 0 || abilityNear) && steady && inside && !cut) {
                 s.enemiesDefeated++;
                 Learner.EnemyStats es = mem.enemy(z.sig);
                 es.kills++; es.killMsSum += z.last - z.first;

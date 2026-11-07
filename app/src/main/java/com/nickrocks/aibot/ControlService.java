@@ -65,10 +65,12 @@ public class ControlService extends AccessibilityService {
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
         if (event == null || event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
-        CharSequence pkg = event.getPackageName();
+        CharSequence pkg = event.getPackageName(), cls = event.getClassName();
         if (pkg == null) return;
         String p = pkg.toString();
-        if (p.equals(getPackageName()) || p.equals("com.android.systemui")) return;
+        if (p.equals("com.android.systemui")) return;
+        // our own floating panel and overlays also send events; only our screens count as "in front"
+        if (p.equals(getPackageName()) && (cls == null || !cls.toString().contains("MainActivity"))) return;
         BotState.foregroundPackage = p;
     }
 
@@ -299,7 +301,7 @@ public class ControlService extends AccessibilityService {
         line2 = new TextView(this); line2.setTextColor(0xFFB9A8C9); line2.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10); line2.setMaxLines(1);
         line1.setText("Nick Rocks AI Bot");
         texts.addView(line1); texts.addView(line2);
-        panel.addView(texts, new LinearLayout.LayoutParams(dp(200), -2));
+        panel.addView(texts, new LinearLayout.LayoutParams(dp(165), -2));
 
         int[] sz = screenSize();
         panelLp = new WindowManager.LayoutParams(-2, -2, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,

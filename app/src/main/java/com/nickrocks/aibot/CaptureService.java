@@ -224,7 +224,8 @@ public class CaptureService extends Service {
         String fg = BotState.foregroundPackage;
         String game = AISettingsManager.gamePackage(this);
         boolean home = c.isHome(fg);
-        if ((!game.isEmpty() && !fg.isEmpty() && !fg.equals(game)) || home) {
+        boolean ours = fg.equals(getPackageName());
+        if ((!game.isEmpty() && !fg.isEmpty() && !fg.equals(game)) || home || ours) {
             c.releaseAll();
             if (!notInFrontLogged) { notInFrontLogged = true; s.log(RunLogger.BASIC, "STATE", "The game is not in front (" + fg + "); the AI waits and holds no controls", null); }
             status(c, s, "Waiting for the game to be in front");

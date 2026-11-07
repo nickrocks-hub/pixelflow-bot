@@ -161,6 +161,10 @@ public final class RunSessionManager implements RunContext {
                 }
             }
             if (paused) {
+                if (gamePaused && !userPaused && gamePausedSince >= 0 && wallNow - gamePausedSince > 10 * 60_000L) {
+                    finish(Outcome.STOPPED, "The game stayed paused for 10 minutes", wallNow);
+                    return Action.idle();
+                }
                 if (state == State.RUNNING) setState(State.PAUSED, userPaused ? "paused by you" : "game menu open");
                 flushMaybe(wallNow);
                 return Action.idle();
@@ -179,7 +183,7 @@ public final class RunSessionManager implements RunContext {
                     finish(Outcome.VICTORY, "A boss was defeated and the game left the dungeon screen (treated as the victory screen)", wallNow);
                     return Action.idle();
                 }
-                if (gone > 30000) { finish(Outcome.ERROR, "The game screen was not recognised for 30 s (another app, a menu the bot can't read, or a new screen layout)", wallNow); return Action.idle(); }
+                if (gone > 30000) { finish(Outcome.STOPPED, "The game left the dungeon screen for 30 s (run abandoned, a menu the bot can't read, or a different screen layout)", wallNow); return Action.idle(); }
                 flushMaybe(wallNow);
                 return Action.idle();
             }
