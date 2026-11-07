@@ -3,15 +3,15 @@ plugins {
 }
 
 android {
-    namespace = "com.aigame.minesweeper"
+    namespace = "com.nickrocks.aibot"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.aigame.minesweeper"
-        minSdk = 26          // adaptive icons, gesture dispatch
+        applicationId = "com.nickrocks.aibot"
+        minSdk = 26          // continued gestures (holding the joysticks) need Android 8
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 1
+        versionName = "1.0"
     }
 
     // Fixed key committed to the repo, so every build from GitHub installs as an update.
@@ -25,7 +25,7 @@ android {
     }
 
     buildTypes {
-        // Release build: not debuggable, so the vision code runs at full speed.
+        // Release build: not debuggable, so the screen reader runs at full speed.
         release {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("fixed")
@@ -41,4 +41,4 @@ android {
     }
 }
 
-// No external libraries: plain Android framework APIs only. Everything runs on the phone.
+// No external libraries: plain Android framework APIs only. Everything runs on the phone, offline.

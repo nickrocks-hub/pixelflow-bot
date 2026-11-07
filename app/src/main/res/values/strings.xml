@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">AI GAME MINESWEEPER</string>
-    <string name="accessibility_label">AI GAME MINESWEEPER</string>
-    <string name="accessibility_description">Lets AI GAME MINESWEEPER tap the tiles of a Minesweeper board (and its smiley button for a new game). It only taps after you press START on its floating button, only inside the Minesweeper game it found, and never taps ads, menus or purchases. It does not read text from your apps.</string>
+    <string name="app_name">Nick Rocks AI Bot</string>
+    <string name="accessibility_label">Nick Rocks AI Bot</string>
+    <string name="accessibility_description">Lets Nick Rocks AI Bot hold the MOVE and SING joysticks and tap the action buttons of the Nick Rocks game while an AI run is going, and shows its floating control panel. It only touches the screen after you press Start AI Run, only while the game you chose is in front, and stops when you press Stop. It does not read text from your apps.</string>
 </resources>

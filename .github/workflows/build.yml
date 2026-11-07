@@ -1,8 +1,8 @@
-name: Build AI GAME MINESWEEPER APK
+name: Build Nick Rocks AI Bot APK
 
 on:
   push:
-    branches: [minesweeper]
+    branches: [nick-rocks-ai-bot]
   workflow_dispatch:
 
 permissions:
@@ -18,6 +18,16 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
+      # The AI core is plain Java: test it on the build machine before building the app.
+      - name: Screen reader check on real game frames
+        run: |
+          mkdir -p out
+          javac -d out app/src/main/java/com/nickrocks/aibot/core/*.java tools/*.java
+          java -Djava.awt.headless=true -cp out VisionCheck tools/samples
+
+      - name: Simulator scenario tests
+        run: java -cp out SimTests scenarios simwork 2>&1 | tee scenarios.log
 
       - uses: gradle/actions/setup-gradle@v4
         with:
@@ -39,19 +49,21 @@ jobs:
           exit 1
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/release/app-release.apk AI-GAME-MINESWEEPER-${{ github.run_number }}.apk
+        run: cp app/build/outputs/apk/release/app-release.apk NICK-ROCKS-AI-BOT-${{ github.run_number }}.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AI-GAME-MINESWEEPER-${{ github.run_number }}
-          path: AI-GAME-MINESWEEPER-${{ github.run_number }}.apk
+          name: NICK-ROCKS-AI-BOT-${{ github.run_number }}
+          path: |
+            NICK-ROCKS-AI-BOT-${{ github.run_number }}.apk
+            scenarios.log
 
       # Direct .apk download link that works from a phone browser.
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: minesweeper-build-${{ github.run_number }}
-          name: AI GAME MINESWEEPER build ${{ github.run_number }}
+          tag_name: nick-rocks-ai-bot-build-${{ github.run_number }}
+          name: Nick Rocks AI Bot build ${{ github.run_number }}
           target_commitish: ${{ github.sha }}
           prerelease: true
           make_latest: false
-          files: AI-GAME-MINESWEEPER-${{ github.run_number }}.apk
+          files: NICK-ROCKS-AI-BOT-${{ github.run_number }}.apk

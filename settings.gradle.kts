@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "AiGameMinesweeper"
+rootProject.name = "NickRocksAiBot"
 include(":app")

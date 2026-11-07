@@ -1,39 +1,65 @@
-# AI GAME MINESWEEPER
+# Nick Rocks AI Bot — autonomous gameplay
 
-An Android app that plays classic-looking Minesweeper by itself, as fast as it can, entirely on the
-phone (no internet, no cloud AI).
+An Android app with an AI that plays Nick Rocks' twin-stick roguelike on the same phone. It watches the
+screen, reads the game, decides, and works the game's own MOVE and SING joysticks and action buttons.
+Everything runs on the phone, offline. Built for the Galaxy Z Fold 7 (unfolded), works on other screens
+after calibrating the controls.
 
-## How it plays
+This is a separate app because the game's source code wasn't available: the bot plays the real game
+from the outside, the way a player does, and sees only what's on screen.
 
-1. **Sees the screen** — screen capture at 540 px wide (`CaptureService`).
-2. **Finds the board** (`core/MineVision`) — raised tiles start with a white bevel on their left and top,
-   so the white edges line up in an even comb; the comb gives the grid (any size). It reads every tile:
-   closed, flagged, opened 0–8 (by the classic number colours), mine, hit mine. It also reads the red
-   7-segment mine counter and finds the smiley.
-3. **Waits for a settled picture** (`core/MineBrain`) — every tapped tile has opened, no `0` is still next
-   to a closed tile (a half-drawn opening or a tile drawn pressed-in), every number fits, and the same
-   reading came twice or the screen has gone still.
-4. **Solves exactly** (`core/MineSolver`) — splits the closed tiles next to numbers into connected regions,
-   counts every mine arrangement that fits (with the mine total), and gets each tile's exact chance of a
-   mine. Every tile at 0% is tapped in one burst. Only when none is certain does it guess — the lowest
-   risk tile.
-5. **Taps** (`TapService`, an accessibility service) — short taps sent back to back in one gesture
-   (45 ms apart by default). It never places flags. After a loss it taps the smiley and plays again.
+## Using it
 
-## Desktop checks (`tools/`)
+1. Install the APK from the latest `nick-rocks-ai-bot-build-N` release.
+2. Open **Nick Rocks AI Bot** → **Start AI Run**. Turn on the accessibility service when asked
+   (Settings → Accessibility → Installed apps → Nick Rocks AI Bot), then press Start again.
+3. Allow screen sharing ("entire screen", or just the game). The game opens if the bot knows which app
+   it is; otherwise open it yourself. Start a dungeon run: the AI takes over when it sees your hearts
+   and your cowboy.
+4. The floating panel (top of the screen) has **START/STOP** and **pause**. The run ends on death, victory,
+   Stop, or an error, and the summary opens.
+
+**Calibrate controls** (main screen) if the game's Touch Layout was changed or you play on the cover
+screen: drag the circles onto MOVE, SING, the 4 buttons and the ULT star; tap B1–B4 to set their jobs.
+
+## Menu (AI BOT — AUTONOMOUS GAMEPLAY)
+
+Start AI Run · Stop AI Run · Pause / Resume · AI Settings · Run History · View Logs · AI Statistics.
+
+## How it works (`app/src/main/java/com/nickrocks/aibot/core`, plain Java)
+
+| Part | What it does |
+|---|---|
+| `GameStateObserver` | Reads each frame (shorter side 432 px): hearts (half hearts), ULT bar and star, minimap (current/visited/unexplored rooms), pause menu, red damage flash, floor vs walls (walk grid), the cowboy (red plaid under a black hat), and everything else on the floor. Objects are tracked frame to frame with the camera's own scrolling removed: things that move are enemies, small fast things are projectiles (notes that leave the player are yours), still things are furniture. |
+| `NavigationPlanner` | Path finding on the walk grid (avoids walls, furniture, enemies and spots where it got stuck), picks the exit towards the nearest unexplored room on the minimap, sweeps rooms when no unexplored rooms are left (to find the way to the next floor), detects being stuck and side-steps. |
+| `CombatDecisionSystem` | Predicts every enemy projectile's path and scores 16 directions + standing still (projectile danger, keep-away from enemies weighted by learned danger, walls, the objective). Picks targets (danger, distance, clear shot, boss), leads moving targets, and decides on DIVE / SMASH / DROP / SCREAM / ULT. |
+| `AutonomousAgent` | The brain: objective (fight, hold, loot, explore, button test), movement, aim, abilities; counts kills, hits, damage, items, rooms, floors; writes explained decisions (situation, decision, reason, result, assessment) with the real numbers that decided them. |
+| `RunSessionManager` | IDLE → INITIALIZING → RUNNING ⇄ PAUSED → FINALIZING → COMPLETED, plus ERROR and INTERRUPTED. Detects death, victory, stop and errors; finishes each run exactly once; in-game timer stops while paused. |
+| `RunLogger`, `RunHistoryRepository` | Log written as it happens (events.jsonl appended every second, meta.json every 4 s) in app storage. Runs left RUNNING by a crash are marked INTERRUPTED on next start. Search, compare, delete, export JSON/CSV/TXT to Downloads/NickRocksAI. |
+| `Learner` | Kept between runs: strategy variants chosen by UCB1 on run scores (Adaptive skill), enemy danger per enemy look, value of each button, measured walk and note speed, which button is DIVE (found by a button test), and repeated mistakes. |
+| `ControlService` (Android) | Holds both joysticks with continued gesture strokes (thumbs stay down), taps buttons, floating panel, debug overlay (pure green; the reader ignores those pixels), calibration. |
+| `CaptureService` (Android) | Screen capture on a background thread, throttled to the decision rate; only plays while the game is in front. |
+
+### What it can't know
+
+- Upgrade/shop/choice screens and the death and victory screens weren't in the recording, so the bot
+  can't read them. Death is detected from the hearts (and the screen changing right after the last hit);
+  victory is assumed when the game leaves the dungeon screen shortly after a boss falls.
+- Damage dealt is counted in **hits** (notes that vanish on an enemy), not damage numbers.
+- Which button is DIVE is found by a button test; SMASH/DROP/SCREAM are guessed from the icons and can be
+  changed in calibration.
+
+## Testing on a computer
 
 ```
-javac -d out app/src/main/java/com/aigame/minesweeper/core/*.java tools/*.java
-java -cp out ReadShot tools/samples/new_game_9x9.jpg 540   # read a real screenshot
-java -cp out Sim reader 300                                  # random mid-game boards, every tile compared
-java -cp out Sim logic 20000 9 9 10                          # solver win rate
-java -cp out Sim pixels 100 9 9 12                           # rendered screens → reader → brain → taps
+javac -d out app/src/main/java/com/nickrocks/aibot/core/*.java tools/*.java
+java -cp out VisionCheck tools/samples            # screen reader on real game frames
+java -cp out SimTests scenarios simwork            # 12 scenarios in the simulator
+java -cp out SimTests train simwork 100           # training mode: does learning help?
+java -cp out VisionReplay <framesDir> 20 <outDir>  # annotate a whole recording
 ```
 
-## Use
-
-1. Install the APK from the latest *AI GAME MINESWEEPER build* release on this repo.
-2. Open the app → **Open Accessibility settings** → turn on *AI GAME MINESWEEPER*
-   (if blocked as a restricted setting: App info → ⋮ → Allow restricted settings).
-3. **Start bot**, share the entire screen, open your Minesweeper game on a new board.
-4. The floating START/STOP button pauses and resumes; it shows the time of each win.
+`tools/Sim.java` is a small dungeon game of the same shape (rooms, doors, minimap, hearts, bats, mages,
+turrets, demons, a boss, projectiles, abilities, ULT, stairs). It produces the same observations as the
+screen reader, so the brain, logs, session and learning are tested end to end, and every scenario checks
+the log against what really happened in the game.
